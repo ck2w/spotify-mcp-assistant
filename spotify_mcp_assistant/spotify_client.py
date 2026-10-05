@@ -147,27 +147,8 @@ def list_devices() -> list[dict]:
 
 
 def search_tracks(query: str, limit: int = 5) -> list[dict]:
-    query = query.strip()
-    if not query:
-        raise ValueError("query must not be empty")
-    if not 1 <= limit <= 10:
-        raise ValueError("limit must be between 1 and 10")
-
-    response = spotify_get(
-        "/search",
-        params={"q": query, "type": "track", "limit": limit},
-    )
-
-    tracks = response.json()["tracks"]["items"]
-    return [
-        {
-            "name": track["name"],
-            "artists": [artist["name"] for artist in track["artists"]],
-            "track_uri": track["uri"],
-            "url": track["external_urls"]["spotify"],
-        }
-        for track in tracks
-    ]
+    from spotify_mcp_assistant.catalog import search_tracks as search
+    return search(query, limit)
 
 
 def get_playback_state() -> dict:

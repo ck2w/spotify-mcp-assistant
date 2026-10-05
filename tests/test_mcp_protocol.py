@@ -33,7 +33,7 @@ def test_list_devices_through_mcp(monkeypatch, device_id):
                 "list_devices",
                 "search_tracks",
                 "get_playback_state",
-                "play_track",
+                "play_track", "get_track", "list_playlists", "get_playlist", "get_playlist_tracks",
             }
 
             result = await client.call_tool("list_devices", {})
