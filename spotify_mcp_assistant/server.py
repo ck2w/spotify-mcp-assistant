@@ -92,9 +92,10 @@ def create_server() -> FastMCP:
             return PlayResult(ok=False, error=error.error)
 
 
-    from spotify_mcp_assistant.tools import catalog, playlists
+    from spotify_mcp_assistant.tools import catalog, playlists, library
     catalog.register_tools(server)
     playlists.register_tools(server)
+    library.register_tools(server)
     return server
 
 
