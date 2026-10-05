@@ -2,6 +2,8 @@ import re
 
 import httpx
 
+from spotify_mcp_assistant.setup_types import LockTimeoutError
+
 from spotify_mcp_assistant.oauth import (
     AuthorizationRequiredError,
     InsufficientScopeError,
@@ -102,6 +104,13 @@ def spotify_request(
             if required_scopes:
                 token_kwargs["required_scopes"] = required_scopes
             token = get_access_token(**token_kwargs)
+        except LockTimeoutError:
+            raise SpotifyError(
+                "auth_busy",
+                "Spotify authorization is busy",
+                "Wait for authorization or refresh to finish and retry",
+                retryable=True,
+            ) from None
         except InsufficientScopeError as error:
             raise SpotifyError(
                 "insufficient_scope",

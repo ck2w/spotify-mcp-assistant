@@ -1,7 +1,6 @@
 import json
 import os
 import secrets
-import tempfile
 import time
 import webbrowser
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -10,6 +9,8 @@ from urllib.parse import parse_qs, urlencode, urlsplit
 
 import httpx
 from dotenv import load_dotenv
+
+from spotify_mcp_assistant.private_files import atomic_private_write, token_lock
 
 REQUESTED_SCOPES = (
     "user-read-playback-state",
@@ -161,25 +162,17 @@ def exchange_code(config: dict[str, str], code: str) -> dict:
 
 
 def save_token(token: dict, path: Path) -> None:
-    with tempfile.NamedTemporaryFile(
-        mode="w", encoding="utf-8", dir=path.parent, delete=False
-    ) as file:
-        temp_path = Path(file.name)
-        try:
-            json.dump(token, file, indent=2)
-        except BaseException:
-            temp_path.unlink(missing_ok=True)
-            raise
-
-    try:
-        os.replace(temp_path, path)
-    finally:
-        temp_path.unlink(missing_ok=True)
+    atomic_private_write(path, json.dumps(token, indent=2).encode())
 
 
 def get_access_token(
     force_refresh: bool = False, *, required_scopes: tuple[str, ...] = ()
 ) -> str:
+    with token_lock(get_config_dir()):
+        return _get_access_token(force_refresh, required_scopes=required_scopes)
+
+
+def _get_access_token(force_refresh: bool, *, required_scopes: tuple[str, ...]) -> str:
     directory = get_config_dir()
     token_path = directory / ".spotify_token.json"
 
@@ -196,6 +189,13 @@ def get_access_token(
         return token["access_token"]
 
     config = load_config(directory / ".env")
+    token = refresh_token(config, token)
+    save_token(token, token_path)
+    check_scopes(token, required_scopes)
+    return token["access_token"]
+
+
+def refresh_token(config: dict[str, str], token: dict) -> dict:
     response = httpx.post(
         "https://accounts.spotify.com/api/token",
         auth=(
@@ -221,24 +221,23 @@ def get_access_token(
     refreshed["refresh_token"] = (
         refreshed.get("refresh_token") or token["refresh_token"]
     )
-    token.update(refreshed)
-    token["expires_at"] = time.time() + refreshed["expires_in"]
-    save_token(token, token_path)
-    check_scopes(token, required_scopes)
-    return token["access_token"]
+    result = {**token, **refreshed}
+    result["expires_at"] = time.time() + refreshed["expires_in"]
+    return result
+
+
+def authorize(config: dict[str, str]) -> dict:
+    url, state = build_authorization_url(config)
+    code = receive_authorization_code(url, state)
+    return exchange_code(config, code)
 
 
 def main() -> None:
     directory = get_config_dir()
-    directory.mkdir(parents=True, exist_ok=True)
-    env_file = directory / ".env"
-    config = load_config(env_file)
-    url, state = build_authorization_url(config)
-    code = receive_authorization_code(url, state)
-
-    token = exchange_code(config, code)
-    token_path = directory / ".spotify_token.json"
-    save_token(token, token_path)
+    with token_lock(directory):
+        config = load_config(directory / ".env")
+        token = authorize(config)
+        save_token(token, directory / ".spotify_token.json")
 
     print("Authorization completed. Token cache saved.")
 
