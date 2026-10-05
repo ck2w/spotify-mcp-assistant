@@ -94,3 +94,44 @@ def set_shuffle(state: bool, device_id: str) -> dict:
 def set_repeat(state: str, device_id: str) -> dict:
     TypeAdapter(Literal['off','context','track']).validate_python(state)
     return _control('set_repeat','PUT','repeat',device_id,{'state':state})
+
+
+from spotify_mcp_assistant.models import PlaylistURI
+from spotify_mcp_assistant.catalog import track_detail
+
+
+def _context_write(operation,device_id,dry_run,method,path,params=None,body=None):
+    device=require_device(device_id)
+    data=mutation(operation,{'device_id':device['device_id']},{'query':params,'body':body})
+    if not dry_run:
+        submit_once(data,lambda:api.spotify_request(method,path,params=params,json=body,required_scopes=WRITE_SCOPES))
+    return data
+
+
+def play_playlist(playlist_uri: str, device_id: str, dry_run: bool = True) -> dict:
+    TypeAdapter(PlaylistURI).validate_python(playlist_uri)
+    device_id=TypeAdapter(DeviceID).validate_python(device_id)
+    return _context_write('play_playlist',device_id,dry_run,'PUT','/me/player/play',
+                          params={'device_id':device_id},body={'context_uri':playlist_uri})
+
+
+def transfer_playback(device_id: str, play: bool = False, dry_run: bool = True) -> dict:
+    device_id=TypeAdapter(DeviceID).validate_python(device_id)
+    return _context_write('transfer_playback',device_id,dry_run,'PUT','/me/player',body={'device_ids':[device_id],'play':play})
+
+
+def _queue_entry(item):
+    kind=item.get('type','unknown') if item else 'unavailable'
+    return {'item_type':kind,'track':track_detail(item) if kind=='track' else None}
+
+
+def get_queue() -> dict:
+    data=api.spotify_request('GET','/me/player/queue',required_scopes=('user-read-currently-playing','user-read-playback-state')).json()
+    return {'currently_playing':_queue_entry(data['currently_playing']) if data.get('currently_playing') else None,
+            'queue':[_queue_entry(item) for item in data.get('queue',[])]}
+
+
+def add_to_queue(track_uri: str, device_id: str, dry_run: bool = True) -> dict:
+    TypeAdapter(TrackURI).validate_python(track_uri)
+    device_id=TypeAdapter(DeviceID).validate_python(device_id)
+    return _context_write('add_to_queue',device_id,dry_run,'POST','/me/player/queue',params={'device_id':device_id,'uri':track_uri})

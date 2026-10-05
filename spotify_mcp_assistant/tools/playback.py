@@ -9,7 +9,7 @@ from spotify_mcp_assistant.spotify_client import SpotifyError
 
 from typing import Literal
 from spotify_mcp_assistant import playback
-from spotify_mcp_assistant.models import BusinessResult,MutationData,DeviceID
+from spotify_mcp_assistant.models import BusinessResult,MutationData,DeviceID,PlaylistURI,TrackURI,QueueData
 from spotify_mcp_assistant.tools import result
 
 
@@ -123,3 +123,23 @@ def register_tools(server):
     def set_repeat(state:Literal["off","context","track"],device_id:DeviceID)->BusinessResult[MutationData]:
         """Execute set_repeat immediately on the explicitly selected device; no preview or extra confirmation. Only use for a clear user request. Verify with get_playback_state. Unknown writes must not be blindly retried."""
         return result(BusinessResult[MutationData],playback.set_repeat,state,device_id)
+
+    @server.tool(annotations={'readOnlyHint':False,'destructiveHint':True,'idempotentHint':False,'openWorldHint':True})
+    def play_playlist(playlist_uri:PlaylistURI,device_id:DeviceID,dry_run:bool=True)->BusinessResult[MutationData]:
+        """Preview starting a playlist context on the chosen device. Wait for a new user confirmation before dry_run=false with identical parameters. Verify context_uri/device/is_playing via get_playback_state."""
+        return result(BusinessResult[MutationData],playback.play_playlist,playlist_uri,device_id,dry_run)
+
+    @server.tool(annotations={'readOnlyHint':False,'destructiveHint':True,'idempotentHint':False,'openWorldHint':True})
+    def transfer_playback(device_id:DeviceID,play:bool=False,dry_run:bool=True)->BusinessResult[MutationData]:
+        """Preview moving playback to one chosen device. play=false does not request starting playback. Wait for new user confirmation before execution; verify target with get_playback_state."""
+        return result(BusinessResult[MutationData],playback.transfer_playback,device_id,play,dry_run)
+
+    @server.tool(annotations={'readOnlyHint':True})
+    def get_queue()->BusinessResult[QueueData]:
+        """Read the current user's queue (no device parameter or pagination). This is a dynamic observation and may not prove a previous add succeeded."""
+        return result(BusinessResult[QueueData],playback.get_queue)
+
+    @server.tool(annotations={'readOnlyHint':False,'destructiveHint':False,'idempotentHint':False,'openWorldHint':True})
+    def add_to_queue(track_uri:TrackURI,device_id:DeviceID,dry_run:bool=True)->BusinessResult[MutationData]:
+        """Preview adding one song to the chosen device queue. Confirm in a new user message before execution. Inspect get_queue after submission; never blindly repeat an unknown write."""
+        return result(BusinessResult[MutationData],playback.add_to_queue,track_uri,device_id,dry_run)

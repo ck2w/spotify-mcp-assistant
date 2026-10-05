@@ -38,6 +38,7 @@ def test_list_devices_through_mcp(monkeypatch, device_id):
                 "remove_playlist_tracks", "replace_playlist_tracks", "reorder_playlist_tracks",
                 "save_playlist", "unsave_playlist", "get_saved_tracks", "save_tracks", "remove_saved_tracks", "check_saved_tracks",
                 "pause_playback", "resume_playback", "next_track", "previous_track", "seek_playback", "set_volume", "set_shuffle", "set_repeat",
+                "play_playlist", "transfer_playback", "get_queue", "add_to_queue",
             }
 
             result = await client.call_tool("list_devices", {})
