@@ -229,3 +229,6 @@ __marimo__/
 !.mcp.json.example
 claude_desktop_config.json
 .superpowers/
+
+# Local planning documents
+/docs/superpowers/
