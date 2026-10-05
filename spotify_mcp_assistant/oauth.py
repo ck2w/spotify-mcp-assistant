@@ -166,13 +166,25 @@ def save_token(token: dict, path: Path) -> None:
 
 
 def get_access_token(
-    force_refresh: bool = False, *, required_scopes: tuple[str, ...] = ()
+    force_refresh: bool = False,
+    *,
+    required_scopes: tuple[str, ...] = (),
+    rejected_access_token: str | None = None,
 ) -> str:
     with token_lock(get_config_dir()):
-        return _get_access_token(force_refresh, required_scopes=required_scopes)
+        return _get_access_token(
+            force_refresh,
+            required_scopes=required_scopes,
+            rejected_access_token=rejected_access_token,
+        )
 
 
-def _get_access_token(force_refresh: bool, *, required_scopes: tuple[str, ...]) -> str:
+def _get_access_token(
+    force_refresh: bool,
+    *,
+    required_scopes: tuple[str, ...],
+    rejected_access_token: str | None = None,
+) -> str:
     directory = get_config_dir()
     token_path = directory / ".spotify_token.json"
 
@@ -184,7 +196,11 @@ def _get_access_token(force_refresh: bool, *, required_scopes: tuple[str, ...]) 
     with token_path.open(encoding="utf-8") as file:
         token = json.load(file)
 
-    if not force_refresh and time.time() < token["expires_at"] - 60:
+    cache_replaced = (
+        rejected_access_token is not None
+        and token["access_token"] != rejected_access_token
+    )
+    if (not force_refresh or cache_replaced) and time.time() < token["expires_at"] - 60:
         check_scopes(token, required_scopes)
         return token["access_token"]
 

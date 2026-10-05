@@ -3,7 +3,7 @@
 import io
 import json
 import os
-import re
+import sys
 import time
 import uuid
 from collections.abc import Callable
@@ -11,6 +11,7 @@ from pathlib import Path
 
 import httpx
 from dotenv import dotenv_values
+from dotenv.parser import parse_stream
 
 from spotify_mcp_assistant import oauth
 from spotify_mcp_assistant.private_files import atomic_private_write, token_lock
@@ -38,13 +39,24 @@ def _ask_value(prompt: str, ask: Callable[[str], str]) -> str:
 
 def _env_bytes(original: bytes | None, config: dict[str, str]) -> bytes:
     text = (original or b"").decode("utf-8")
-    # Known credentials must be single-line; preserve other settings and comments.
-    pattern = re.compile(r"^\s*(?:export\s+)?(" + "|".join(CONFIG_KEYS) + r")\s*=")
-    lines = [line for line in text.splitlines() if not pattern.match(line)]
+    bindings = list(parse_stream(io.StringIO(text)))
+    if any(binding.error for binding in bindings):
+        raise SetupError(
+            "invalid_private_env",
+            "Private .env has invalid syntax; repair it before retrying.",
+        )
+    preserved = "".join(
+        binding.original.string
+        for binding in bindings
+        if binding.key not in CONFIG_KEYS
+    )
+    if preserved and not preserved.endswith("\n"):
+        preserved += "\n"
+    lines = []
     for name in CONFIG_KEYS:
         escaped = config[name].replace("\\", "\\\\").replace("'", "\\'")
         lines.append(f"{name}='{escaped}'")
-    return ("\n".join(lines) + "\n").encode()
+    return (preserved + "\n".join(lines) + "\n").encode()
 
 
 def _commit_pair(
@@ -61,22 +73,33 @@ def _commit_pair(
     try:
         atomic_private_write(paths[0], env_bytes)
         oauth.save_token(token, paths[1])
-    except OSError:
+    except BaseException as error:
         try:
             for path, old in zip(paths, originals):
                 if old is None:
                     path.unlink(missing_ok=True)
                 else:
                     atomic_private_write(path, old)
-        except OSError:
+        except BaseException:
             raise SetupError(
                 "private_restore_failed",
                 "Private files could not be restored. Recover the .backup files in the private directory before retrying.",
             ) from None
+        if not isinstance(error, OSError):
+            raise
         raise SetupError(
             "private_write_failed",
             "Private files could not be saved; previous files were restored.",
         ) from None
+
+
+def _authorize_interactively(config: dict[str, str]) -> dict:
+    if not sys.stdin.isatty():
+        raise SetupError(
+            "interaction_required",
+            "Run setup in an interactive terminal to authorize Spotify.",
+        )
+    return oauth.authorize(config)
 
 
 def _verify_devices(token: dict) -> None:
@@ -157,13 +180,15 @@ def prepare_authorization(
                         elif candidate.get("refresh_token"):
                             try:
                                 token = oauth.refresh_token(config, candidate)
+                                oauth.save_token(token, token_path)
+                                originals = (originals[0], _read(token_path))
                             except oauth.AuthorizationRequiredError:
                                 pass
                 except (ValueError, KeyError, TypeError, oauth.InsufficientScopeError):
                     pass
             if token is None:
                 print("Authorize your Spotify account in the browser.")
-                token = oauth.authorize(config)
+                token = _authorize_interactively(config)
             if not isinstance(token.get("scope"), str):
                 raise SetupError(
                     "insufficient_scope",
@@ -176,7 +201,7 @@ def prepare_authorization(
                 if error.response.status_code != 401:
                     raise
                 print("Spotify rejected the cached authorization; authorize again.")
-                token = oauth.authorize(config)
+                token = _authorize_interactively(config)
                 if not isinstance(token.get("scope"), str):
                     raise SetupError(
                         "insufficient_scope",
