@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "spotify": {
+      "type": "stdio",
+      "command": "/ABSOLUTE/PATH/TO/VENV/bin/python",
+      "args": [
+        "-m",
+        "spotify_mcp_assistant.server"
+      ],
+      "env": {
+        "SPOTIFY_CONFIG_DIR": "/ABSOLUTE/PATH/TO/PRIVATE/CONFIG"
+      }
+    }
+  }
+}

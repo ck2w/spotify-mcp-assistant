@@ -218,3 +218,14 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Private Spotify configuration and execution scratch
+.env.*
+!.env.example
+.spotify_token.json
+.spotify_token.json.*
+.mcp.json
+.mcp.json.*
+!.mcp.json.example
+claude_desktop_config.json
+.superpowers/
