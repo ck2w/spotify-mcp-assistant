@@ -4,7 +4,7 @@ Find and play music through conversations in Claude Code or Claude Desktop:
 
 **Search → Choose a track and device → Preview → Confirm → Play → Verify**
 
-An independent Python project built with **FastMCP over stdio**. Version 1 exposes four tools, without recommendations, similar-track discovery, or a custom chat UI.
+An independent Python project built with **FastMCP over stdio**. Version 0.2.0 exposes **32 tools** for tracks, playlists, playback, queues, and favorites. Claude and other MCP clients handle conversations and orchestration; this project is the MCP server.
 
 ## 🧭 Start here
 
@@ -200,7 +200,7 @@ Add a comma after the preceding `args` field. Do not include a Client Secret or 
 
 ### ③ Restart and check
 
-Save the file, press **Command+Q to quit Claude Desktop completely**, then reopen it. Start a new chat and check the tools or connectors list for `spotify` and its four tools.
+Save the file, press **Command+Q to quit Claude Desktop completely**, then reopen it. Start a new chat and check the tools or connectors list for `spotify` and its 32 tools.
 
 Claude Desktop starts the server automatically. You do not need to activate Poetry or run the server manually. See the [official MCP desktop setup guide](https://modelcontextprotocol.io/docs/develop/connect-local-servers).
 
@@ -219,21 +219,52 @@ Open Spotify so the target device is discoverable. If no devices appear, try pla
 Keep these behaviors in mind:
 
 - **Preview is not audio playback.** It checks the device without sending a playback PUT. It does not verify track existence or playability.
-- **Confirmation is an assistant instruction.** Version 1 has no server approval token; a client can still call `dry_run=False` directly.
+- **Confirmation is an assistant instruction.** The server has no approval token; a client can still call `dry_run=False` directly.
 - **Playback starts from the beginning.** It does not resume saved progress.
 - **`submitted` does not mean verified.** Query state and check that the track URI and device ID match and `is_playing=True`.
 - Changing the track or device requires another preview and confirmation. Do not automatically switch devices or repeat playback requests.
 
-## 🧰 Four tools
+## 🧰 32 tools
 
-| Tool | Purpose |
+| Group | Tools |
 |---|---|
-| `search_tracks(query, limit=5)` | Find tracks by title, artist, or Spotify query syntax; return names, artists, URIs, and links. Limit: 1–10. |
-| `list_devices()` | List devices and active/restricted flags. Null IDs and restricted devices cannot be playback targets. |
-| `play_track(track_uri, device_id, dry_run=True)` | Preview by default; explicitly pass `False` to play on the selected device. |
-| `get_playback_state()` | Read the track, device, playing state, and progress for verification. |
+| Tracks | `search_tracks`, `get_track` |
+| Playlist reads | `list_playlists`, `get_playlist`, `get_playlist_tracks` |
+| Playlist mutations | `create_playlist`, `update_playlist_details`, `add_playlist_tracks`, `remove_playlist_tracks`, `replace_playlist_tracks`, `reorder_playlist_tracks` |
+| Playlist library | `save_playlist`, `unsave_playlist` |
+| Playback and devices | `list_devices`, `get_playback_state`, `play_track`, `play_playlist`, `transfer_playback` |
+| Direct controls | `pause_playback`, `resume_playback`, `next_track`, `previous_track`, `seek_playback`, `set_volume`, `set_shuffle`, `set_repeat` |
+| Queue | `get_queue`, `add_to_queue` |
+| Saved songs | `get_saved_tracks`, `save_tracks`, `remove_saved_tracks`, `check_saved_tracks` |
 
-Business results use `ok/data/error`. Business failures return `ok=False`; input schema failures are MCP tool errors.
+**Direct controls execute immediately** for clear user requests, always on an explicit device ID. Other writes default to `dry_run=true`: preview, wait for a new user confirmation, then execute identical parameters with `false`. Confirmation is a client responsibility; the server cannot verify the conversation.
+
+- Track and playlist URIs are `spotify:track:...` and `spotify:playlist:...`; `playlist_id` is the bare ID. Use values returned by reads, not guessed names.
+- `create_playlist` defaults to private and creates an empty playlist. Only execution returns its real ID. Preview adding songs separately, then confirm and execute.
+- Content-change previews expose `snapshot_id`; pass it as `expected_snapshot_id` at execution. A mismatch requires another read and preview. This is a precheck, not an atomic lock.
+- Playlist/favorites pages default to 20, maximum 50. Use `next_offset` until absent. Search retains its original 1–10 result limit.
+- Add/remove songs and favorites accept 1–500 URIs, sent sequentially in batches of 100 for playlist items or 40 for library operations. Adding keeps duplicates; URI removal and saving deduplicate and report the mapping.
+- Replacement accepts 0–100 tracks in one request and overwrites **all contents**; an empty list clears the playlist. Reordering uses zero-based positions including non-track/unavailable entries.
+- `resume_playback` preserves existing context; `play_track` starts a song from the beginning. `transfer_playback` defaults to `play=false`. No audio streaming/preview is provided.
+- `save_playlist` saves an existing playlist, and `unsave_playlist` removes it from your library. Neither copies nor deletes its contents.
+
+Business results use `ok/data/error`. A batch failure can return `ok=false` **with progress in data**. `submitted` means the API accepted the request, not verified state. `partial` preserves completed batches; `unknown` identifies a batch that may have executed. Read remote state before deciding to retry. The server does not automatically replay writes, roll back batches, or persist task progress.
+
+See [client workflow recipes and evidence boundaries](docs/workflows.md).
+
+### Upgrade authorization
+
+Existing playback-only tokens need additional permissions. Run:
+
+```bash
+poetry run spotify-mcp-auth
+```
+
+The authorization command requests playback read/currently-playing/modify, playlist read-private/read-collaborative/modify-private/modify-public, and library read/modify permissions. Reuse the same private configuration directory. Tools never open an authorization browser automatically.
+
+Known missing scopes return `insufficient_scope`. An old token without scope metadata is allowed to reach the API; a 403 can also reflect account, application, resource, or device restrictions.
+
+Current endpoints use `/me/playlists`, `/playlists/{id}/items`, and URI-based `/me/library`. Development-mode playlist contents can be restricted to playlists you own or collaborate on; inaccessible content is not an empty playlist. Consult the [migration guide](https://developer.spotify.com/documentation/web-api/tutorials/february-2026-migration-guide) and newer [July 2026 changes](https://developer.spotify.com/documentation/web-api/references/changes/july-2026) when checking application access and quotas.
 
 ## 🛠️ Troubleshooting
 
@@ -242,13 +273,14 @@ Business results use `ok/data/error`. Business failures return `ok=False`; input
 | Claude Code shows Pending approval | Start `claude` in the project directory, approve `spotify`, then check `/mcp`. |
 | Claude Desktop does not show tools | Check the JSON and absolute interpreter path, then fully quit and restart. macOS logs are in `~/Library/Logs/Claude`. |
 | `auth_required` | Run `poetry run spotify-mcp-auth` from the project directory, using the same private directory as the client. |
+| `insufficient_scope` | Reauthorize with `spotify-mcp-auth` to grant management permissions. |
 | `oauth_config_error` / `forbidden` | Check credentials, granted scopes, account eligibility, and application user access. |
 | No devices / `device_unavailable` | Open Spotify, play then pause, list devices again, and select a current ID. |
 | `device_restricted` | Ask the user to select another device. |
 | `rate_limited` | Wait according to `retry_after_seconds` when provided. |
 | `playback_result_unknown` | Read state first. The request may have reached Spotify; do not immediately replay. |
 
-Reads retry an API 401 at most once after refreshing the token. Playback writes are not automatically retried. Malformed token files, some configuration failures, and authorization timeouts retain the original authorization module's failure behavior.
+Reads retry an API 401 at most once after refreshing the token. Business writes are not automatically retried. Write timeouts and ambiguous server failures require state inspection; OAuth refresh failures before submission are reported separately. Token/configuration errors are sanitized in tool results; the standalone authorization command reports its own failures.
 
 ## 🧪 Development and verification
 
@@ -258,9 +290,19 @@ poetry run pytest tests -v
 poetry build
 ```
 
-The suite contains nine reused cases and one configuration-path test. It uses fake data and mocks, without real credentials or playback devices. Separate checks verified standalone installation, startup outside the repository, and both stdio entry points.
+The suite verifies all tool groups, schema bounds, default previews, OAuth scopes, pagination, device checks, sequential batching, partial/unknown outcomes, and three simulated MCP workflows. It uses fake data and HTTP responses without real credentials or devices.
 
-Mocked tests do not establish live OAuth or playback success. After configuring and authorizing, use the preview, confirmation, and verification workflow above for real acceptance testing.
+Mocked tests do not establish live OAuth, playback, or client confirmation behavior. Follow [the workflow acceptance guide](docs/workflows.md) for real runs and record results separately.
+
+To verify installed stdio discovery from outside the repository:
+
+```bash
+poetry run python tests/check_stdio.py \
+  --server-python /ABSOLUTE/PATH/TO/INSTALLED/VENV/bin/python \
+  --cwd /ABSOLUTE/PATH/OUTSIDE/REPOSITORY
+```
+
+This checks both installed entry points and all 32 tools using an empty temporary private configuration; it does not contact Spotify.
 
 To start or inspect entry points directly:
 
