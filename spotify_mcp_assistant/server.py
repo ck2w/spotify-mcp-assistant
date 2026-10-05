@@ -11,14 +11,22 @@ def create_server() -> FastMCP:
     server = FastMCP(
         "Spotify Playback Assistant",
         instructions=(
-            "Search for tracks and list devices before playback. "
-            "Preview with dry_run=True, then wait for a new user message "
-            "confirming the exact song and device before dry_run=False. "
-            "An initial request to play is not confirmation of a later preview. "
-            "play_track restarts a track; it does not resume its saved position. "
-            "Verify playback using get_playback_state. "
-            "If playback_result_unknown occurs, check playback state "
-            "before attempting playback again."
+            "Use these Spotify tools for clear user requests. Resolve ambiguous tracks and devices with the user. "
+            "Playlist and library mutations, queue additions, transfers, and starting track/playlist playback "
+            "default to dry_run=True. Show the preview, then wait for a NEW user message confirming "
+            "the exact parameters before dry_run=False. Changed parameters require another preview. "
+            "Pause/resume, next/previous, seek, volume, shuffle and repeat execute immediately without dry_run. "
+            "Confirmation is enforced by the client conversation, not by this server. "
+            "play_track restarts a track; resume_playback preserves the existing context. "
+            "Use real playlist_id from executed create_playlist; creation preview has no ID. "
+            "For content changes pass the preview snapshot_id as expected_snapshot_id. "
+            "Read list pages using next_offset; do not claim a partial page is the whole library. "
+            "Submitted means a successful API response, not verified state. Read playlist contents, "
+            "check_saved_tracks or get_playback_state to verify. "
+            "On partial/unknown writes preserve progress, inspect state before retrying, "
+            "and never blindly repeat creation, queue addition or playback. "
+            "Replacement overwrites all playlist contents; empty replacement clears it. "
+            "unsave_playlist removes a library entry, not the playlist itself."
         ),
     )
 

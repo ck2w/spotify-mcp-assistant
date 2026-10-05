@@ -11,6 +11,18 @@ from spotify_mcp_assistant.server import mcp
 from spotify_mcp_assistant.spotify_client import SpotifyError
 
 
+EXPECTED_TOOLS = {
+                "list_devices",
+                "search_tracks",
+                "get_playback_state",
+                "play_track", "get_track", "list_playlists", "get_playlist", "get_playlist_tracks",
+                "create_playlist", "update_playlist_details", "add_playlist_tracks",
+                "remove_playlist_tracks", "replace_playlist_tracks", "reorder_playlist_tracks",
+                "save_playlist", "unsave_playlist", "get_saved_tracks", "save_tracks", "remove_saved_tracks", "check_saved_tracks",
+                "pause_playback", "resume_playback", "next_track", "previous_track", "seek_playback", "set_volume", "set_shuffle", "set_repeat",
+                "play_playlist", "transfer_playback", "get_queue", "add_to_queue",
+            }
+
 @pytest.mark.parametrize("device_id", ["test-mac", None])
 def test_list_devices_through_mcp(monkeypatch, device_id):
     device = {
@@ -29,17 +41,7 @@ def test_list_devices_through_mcp(monkeypatch, device_id):
     async def scenario():
         async with Client(mcp) as client:
             tools = await client.list_tools()
-            assert {tool.name for tool in tools} == {
-                "list_devices",
-                "search_tracks",
-                "get_playback_state",
-                "play_track", "get_track", "list_playlists", "get_playlist", "get_playlist_tracks",
-                "create_playlist", "update_playlist_details", "add_playlist_tracks",
-                "remove_playlist_tracks", "replace_playlist_tracks", "reorder_playlist_tracks",
-                "save_playlist", "unsave_playlist", "get_saved_tracks", "save_tracks", "remove_saved_tracks", "check_saved_tracks",
-                "pause_playback", "resume_playback", "next_track", "previous_track", "seek_playback", "set_volume", "set_shuffle", "set_repeat",
-                "play_playlist", "transfer_playback", "get_queue", "add_to_queue",
-            }
+            assert {tool.name for tool in tools} == EXPECTED_TOOLS
 
             result = await client.call_tool("list_devices", {})
             payload = result.structured_content
@@ -189,3 +191,40 @@ def test_authorization_required_through_mcp(monkeypatch):
 
     asyncio.run(scenario())
     get.assert_not_called()
+
+
+def test_server_factories_and_execution_schemas():
+    from spotify_mcp_assistant.server import create_server
+    direct={'pause_playback','resume_playback','next_track','previous_track','seek_playback','set_volume','set_shuffle','set_repeat'}
+    async def scenario():
+        for server in (create_server(),create_server()):
+            async with Client(server) as client:
+                tools=await client.list_tools()
+                assert len(tools)==len({tool.name for tool in tools})==32
+                assert {tool.name for tool in tools}==EXPECTED_TOOLS
+                for tool in tools:
+                    properties=tool.input_schema.get('properties',{})
+                    if tool.name in direct:
+                        assert 'dry_run' not in properties
+                    elif tool.annotations.read_only_hint is False:
+                        assert properties['dry_run']['default'] is True
+                queue=next(tool for tool in tools if tool.name=='get_queue')
+                assert queue.input_schema.get('properties',{})=={}
+    asyncio.run(scenario())
+
+
+def test_mcp_batch_error_preserves_partial_data(fake_http,fake_uris):
+    fake_http.enqueue_playlist_precheck(total=0)
+    fake_http.enqueue(httpx.Response(201,json={'snapshot_id':'first'}))
+    fake_http.enqueue_playlist_precheck(total=100,snapshot='first')
+    fake_http.enqueue(httpx.ReadTimeout('fake'))
+    async def scenario():
+        async with Client(mcp) as client:
+            response=await client.call_tool('add_playlist_tracks',{'playlist_id':'p'*22,'track_uris':fake_uris(201),'dry_run':False})
+            payload=response.structured_content
+            assert not response.is_error
+            assert payload['ok'] is False
+            assert payload['data']['submitted_ranges']==[[0,100]]
+            assert payload['data']['unknown_range']==[100,200]
+            assert payload['error']['code']=='write_result_unknown'
+    asyncio.run(scenario())
