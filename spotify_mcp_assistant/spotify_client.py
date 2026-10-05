@@ -131,19 +131,8 @@ def spotify_get(path: str, params: dict | None = None) -> httpx.Response:
 
 
 def list_devices() -> list[dict]:
-    response = spotify_get("/me/player/devices")
-
-    devices = response.json()["devices"]
-    return [
-        {
-            "device_id": device["id"],
-            "name": device["name"],
-            "type": device["type"],
-            "is_active": device["is_active"],
-            "is_restricted": device["is_restricted"],
-        }
-        for device in devices
-    ]
+    from spotify_mcp_assistant.playback import list_devices as devices
+    return devices()
 
 
 def search_tracks(query: str, limit: int = 5) -> list[dict]:
@@ -152,127 +141,15 @@ def search_tracks(query: str, limit: int = 5) -> list[dict]:
 
 
 def get_playback_state() -> dict:
-    response = spotify_get("/me/player")
-
-    if response.status_code == 204:
-        return {
-            "has_playback": False,
-            "is_playing": False,
-            "progress_ms": None,
-            "track": None,
-            "device": None,
-        }
-
-    playback = response.json()
-    item = playback.get("item")
-    device = playback.get("device")
-
-    track = None
-    if item and item.get("type") == "track":
-        track = {
-            "name": item["name"],
-            "artists": [artist["name"] for artist in item["artists"]],
-            "track_uri": item["uri"],
-        }
-
-    return {
-        "has_playback": True,
-        "is_playing": playback["is_playing"],
-        "progress_ms": playback.get("progress_ms"),
-        "track": track,
-        "device": (
-            {
-                "device_id": device["id"],
-                "name": device["name"],
-            }
-            if device
-            else None
-        ),
-    }
+    from spotify_mcp_assistant.playback import get_playback_state as state
+    return state()
 
 
-def play_track(
-    track_uri: str,
-    device_id: str,
-    dry_run: bool = True,
-) -> dict:
-    if not re.fullmatch(r"spotify:track:[A-Za-z0-9]{22}", track_uri):
-        raise SpotifyError(
-            "invalid_track",
-            "Invalid track URI",
-            "Use a track_uri returned by search_tracks",
-        )
-
-    if not device_id.strip():
-        raise SpotifyError(
-            "device_unavailable",
-            "Device ID is required",
-            "Call list_devices and select a device",
-        )
-
-    device = next(
-        (item for item in list_devices() if item["device_id"] == device_id),
-        None,
-    )
-    if device is None:
-        raise SpotifyError(
-            "device_unavailable",
-            "Device is no longer available",
-            "Open Spotify and call list_devices again",
-        )
-    if device["is_restricted"]:
-        raise SpotifyError(
-            "device_restricted",
-            "Device does not allow playback control",
-            "Select another device from list_devices",
-        )
-
-    if dry_run:
-        return {
-            "status": "preview",
-            "track_uri": track_uri,
-            "device_id": device_id,
-            "device_name": device["name"],
-            "next_action": "Confirm this song and device before playing",
-        }
-
-    write_started = False
-    try:
-        token = get_access_token()
-        write_started = True
-        response = httpx.put(
-            "https://api.spotify.com/v1/me/player/play",
-            headers={"Authorization": f"Bearer {token}"},
-            params={"device_id": device_id},
-            json={"uris": [track_uri]},
-            timeout=15,
-        )
-    except AuthorizationRequiredError:
-        raise SpotifyError(
-            "auth_required",
-            "Spotify authorization is unavailable",
-            "Run spotify-mcp-auth to authorize again",
-        ) from None
-    except httpx.HTTPStatusError as error:
-        check_response(error.response)
-    except httpx.RequestError:
-        if write_started:
-            raise SpotifyError(
-                "playback_result_unknown",
-                "Could not determine whether playback started",
-                "Call get_playback_state before attempting playback again",
-            ) from None
-        raise SpotifyError(
-            "network_error",
-            "Could not obtain a Spotify access token",
-            "Check your connection and retry later",
-            retryable=True,
-        ) from None
-
-    check_response(response)
-    return {
-        "status": "submitted",
-        "track_uri": track_uri,
-        "device_id": device_id,
-        "next_action": "Call get_playback_state to verify playback",
-    }
+def play_track(track_uri: str, device_id: str, dry_run: bool = True) -> dict:
+    from pydantic import TypeAdapter
+    from spotify_mcp_assistant.models import TrackURI
+    from spotify_mcp_assistant.playback import require_device, _play_track
+    if not re.fullmatch(r"^spotify:track:[A-Za-z0-9]{22}$", track_uri):
+        raise SpotifyError("invalid_track", "Invalid track URI", "Use a URI returned by search_tracks")
+    TypeAdapter(TrackURI).validate_python(track_uri)
+    return _play_track(track_uri, require_device(device_id, devices=list_devices()), dry_run)

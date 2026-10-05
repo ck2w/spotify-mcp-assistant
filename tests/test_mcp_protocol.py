@@ -37,6 +37,7 @@ def test_list_devices_through_mcp(monkeypatch, device_id):
                 "create_playlist", "update_playlist_details", "add_playlist_tracks",
                 "remove_playlist_tracks", "replace_playlist_tracks", "reorder_playlist_tracks",
                 "save_playlist", "unsave_playlist", "get_saved_tracks", "save_tracks", "remove_saved_tracks", "check_saved_tracks",
+                "pause_playback", "resume_playback", "next_track", "previous_track", "seek_playback", "set_volume", "set_shuffle", "set_repeat",
             }
 
             result = await client.call_tool("list_devices", {})
@@ -164,6 +165,7 @@ def test_empty_playback_through_mcp(monkeypatch):
                 "progress_ms": None,
                 "track": None,
                 "device": None,
+                "shuffle_state": None, "repeat_state": None, "context_uri": None,
             }
 
     asyncio.run(scenario())

@@ -47,9 +47,14 @@ class PlaybackTrack(BaseModel):
 class PlaybackDevice(BaseModel):
     device_id: str | None
     name: str
+    volume_percent: int | None = None
+    supports_volume: bool | None = None
 
 
 class PlaybackState(BaseModel):
+    shuffle_state: bool | None = None
+    repeat_state: str | None = None
+    context_uri: str | None = None
     has_playback: bool
     is_playing: bool
     progress_ms: int | None
