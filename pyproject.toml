@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "spotify-mcp-assistant"
-version = "0.1.0"
-description = "A Spotify MCP assistant for explicit track search and confirmed playback"
+version = "0.2.0"
+description = "A Spotify MCP server for playlists, playback, queues, and favorites"
 readme = "README.md"
 packages = [{ include = "spotify_mcp_assistant" }]
 

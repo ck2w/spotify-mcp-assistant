@@ -83,6 +83,7 @@ class PlayResult(BaseModel):
 
 
 from typing import Annotated, Any, Generic, TypeVar
+
 from pydantic import Field, StringConstraints
 
 TrackURI = Annotated[str, Field(pattern=r"^spotify:track:[A-Za-z0-9]{22}$")]
@@ -184,7 +185,9 @@ class QueueData(BaseModel):
     queue: list[QueueEntry]
 
 
-def normalize_uris(uris: list[str], *, deduplicate: bool) -> tuple[list[str], list[list[int]]]:
+def normalize_uris(
+    uris: list[str], *, deduplicate: bool
+) -> tuple[list[str], list[list[int]]]:
     normalized, indices, seen = [], [], {}
     for index, uri in enumerate(uris):
         if deduplicate and uri in seen:

@@ -44,19 +44,36 @@ def test_config_directory_resolution(tmp_path, monkeypatch):
 
 def test_authorization_requests_management_scopes():
     from urllib.parse import parse_qs, urlsplit
+
     from spotify_mcp_assistant import oauth
-    url, state = oauth.build_authorization_url({"SPOTIFY_CLIENT_ID": "fake", "SPOTIFY_REDIRECT_URI": "http://127.0.0.1:8888/callback"})
+
+    url, state = oauth.build_authorization_url(
+        {
+            "SPOTIFY_CLIENT_ID": "fake",
+            "SPOTIFY_REDIRECT_URI": "http://127.0.0.1:8888/callback",
+        }
+    )
     assert set(parse_qs(urlsplit(url).query)["scope"][0].split()) == {
-        "user-read-playback-state", "user-read-currently-playing", "user-modify-playback-state",
-        "playlist-read-private", "playlist-read-collaborative", "playlist-modify-private",
-        "playlist-modify-public", "user-library-read", "user-library-modify"}
+        "user-read-playback-state",
+        "user-read-currently-playing",
+        "user-modify-playback-state",
+        "playlist-read-private",
+        "playlist-read-collaborative",
+        "playlist-modify-private",
+        "playlist-modify-public",
+        "user-library-read",
+        "user-library-modify",
+    }
     assert state
 
 
 @pytest.mark.parametrize("scope", [None, "user-library-read"])
 def test_cached_scope_compatibility(tmp_path, monkeypatch, scope):
-    import json, time
+    import json
+    import time
+
     from spotify_mcp_assistant import oauth
+
     monkeypatch.setenv("SPOTIFY_CONFIG_DIR", str(tmp_path))
     token = {"access_token": "fake", "expires_at": time.time() + 3600}
     if scope is not None:
@@ -70,16 +87,33 @@ def test_cached_scope_compatibility(tmp_path, monkeypatch, scope):
 
 @pytest.mark.parametrize("scope", [None, "user-read-playback-state"])
 def test_refresh_without_scope_preserves_knowledge(tmp_path, monkeypatch, scope):
-    import json, time, httpx
+    import json
+    import time
+
+    import httpx
+
     from spotify_mcp_assistant import oauth
+
     monkeypatch.setenv("SPOTIFY_CONFIG_DIR", str(tmp_path))
-    monkeypatch.setattr(oauth, "load_config", lambda _: {"SPOTIFY_CLIENT_ID": "fake", "SPOTIFY_CLIENT_SECRET": "fake"})
-    token = {"access_token": "old", "refresh_token": "fake-refresh", "expires_at": time.time() - 1}
+    monkeypatch.setattr(
+        oauth,
+        "load_config",
+        lambda _: {"SPOTIFY_CLIENT_ID": "fake", "SPOTIFY_CLIENT_SECRET": "fake"},
+    )
+    token = {
+        "access_token": "old",
+        "refresh_token": "fake-refresh",
+        "expires_at": time.time() - 1,
+    }
     if scope is not None:
         token["scope"] = scope
     cache = tmp_path / ".spotify_token.json"
     cache.write_text(json.dumps(token))
-    response = httpx.Response(200, json={"access_token": "new", "expires_in": 3600}, request=httpx.Request("POST", "https://accounts.spotify.com/api/token"))
+    response = httpx.Response(
+        200,
+        json={"access_token": "new", "expires_in": 3600},
+        request=httpx.Request("POST", "https://accounts.spotify.com/api/token"),
+    )
     monkeypatch.setattr(oauth.httpx, "post", lambda *a, **kw: response)
     assert oauth.get_access_token() == "new"
     refreshed = json.loads(cache.read_text())

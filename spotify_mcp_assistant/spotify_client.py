@@ -2,7 +2,11 @@ import re
 
 import httpx
 
-from spotify_mcp_assistant.oauth import AuthorizationRequiredError, InsufficientScopeError, get_access_token
+from spotify_mcp_assistant.oauth import (
+    AuthorizationRequiredError,
+    InsufficientScopeError,
+    get_access_token,
+)
 
 
 class SpotifyError(Exception):
@@ -76,13 +80,21 @@ def check_response(response: httpx.Response) -> None:
 
 
 def spotify_request(
-    method: str, path: str, *, params: dict | None = None,
-    json: dict | None = None, unknown_code: str = "write_result_unknown",
+    method: str,
+    path: str,
+    *,
+    params: dict | None = None,
+    json: dict | None = None,
+    unknown_code: str = "write_result_unknown",
     required_scopes: tuple[str, ...] = (),
 ) -> httpx.Response:
     """Reads may refresh once. Writes are never replayed after submission."""
     method = method.upper()
-    if method not in {"GET", "POST", "PUT", "DELETE"} or not path.startswith("/") or path.startswith("//"):
+    if (
+        method not in {"GET", "POST", "PUT", "DELETE"}
+        or not path.startswith("/")
+        or path.startswith("//")
+    ):
         raise ValueError("Expected a supported method and relative Spotify API path")
     for attempt in range(2 if method == "GET" else 1):
         try:
@@ -91,36 +103,68 @@ def spotify_request(
                 token_kwargs["required_scopes"] = required_scopes
             token = get_access_token(**token_kwargs)
         except InsufficientScopeError as error:
-            raise SpotifyError("insufficient_scope", "Missing scopes: " + ", ".join(error.missing_scopes),
-                               "Run spotify-mcp-auth to grant the required permissions") from None
+            raise SpotifyError(
+                "insufficient_scope",
+                "Missing scopes: " + ", ".join(error.missing_scopes),
+                "Run spotify-mcp-auth to grant the required permissions",
+            ) from None
         except AuthorizationRequiredError:
-            raise SpotifyError("auth_required", "Spotify authorization is unavailable",
-                               "Run spotify-mcp-auth to authorize again") from None
+            raise SpotifyError(
+                "auth_required",
+                "Spotify authorization is unavailable",
+                "Run spotify-mcp-auth to authorize again",
+            ) from None
         except httpx.HTTPStatusError:
-            raise SpotifyError("oauth_config_error", "Spotify rejected token refresh",
-                               "Check configuration or run spotify-mcp-auth again") from None
+            raise SpotifyError(
+                "oauth_config_error",
+                "Spotify rejected token refresh",
+                "Check configuration or run spotify-mcp-auth again",
+            ) from None
         except httpx.RequestError:
-            raise SpotifyError("network_error", "Could not obtain a Spotify access token",
-                               "Check your connection and retry later", retryable=True) from None
+            raise SpotifyError(
+                "network_error",
+                "Could not obtain a Spotify access token",
+                "Check your connection and retry later",
+                retryable=True,
+            ) from None
         except (ValueError, OSError, KeyError, TypeError):
-            raise SpotifyError("oauth_config_error", "Spotify configuration or token cache is invalid",
-                               "Check configuration and run spotify-mcp-auth again") from None
-        kwargs = {"headers": {"Authorization": f"Bearer {token}"}, "params": params, "timeout": 15}
+            raise SpotifyError(
+                "oauth_config_error",
+                "Spotify configuration or token cache is invalid",
+                "Check configuration and run spotify-mcp-auth again",
+            ) from None
+        kwargs = {
+            "headers": {"Authorization": f"Bearer {token}"},
+            "params": params,
+            "timeout": 15,
+        }
         if json is not None:
             kwargs["json"] = json
         try:
-            response = getattr(httpx, method.lower())(f"https://api.spotify.com/v1{path}", **kwargs)
+            response = getattr(httpx, method.lower())(
+                f"https://api.spotify.com/v1{path}", **kwargs
+            )
         except httpx.RequestError:
             if method != "GET":
-                raise SpotifyError(unknown_code, "Could not determine whether the write completed",
-                                   "Read the affected state before deciding whether to retry") from None
-            raise SpotifyError("network_error", "Could not read Spotify state",
-                               "Check your connection and retry later", retryable=True) from None
+                raise SpotifyError(
+                    unknown_code,
+                    "Could not determine whether the write completed",
+                    "Read the affected state before deciding whether to retry",
+                ) from None
+            raise SpotifyError(
+                "network_error",
+                "Could not read Spotify state",
+                "Check your connection and retry later",
+                retryable=True,
+            ) from None
         if method == "GET" and response.status_code == 401 and attempt == 0:
             continue
         if method != "GET" and response.status_code >= 500:
-            raise SpotifyError(unknown_code, "Spotify could not confirm the write result",
-                               "Read the affected state before deciding whether to retry")
+            raise SpotifyError(
+                unknown_code,
+                "Spotify could not confirm the write result",
+                "Read the affected state before deciding whether to retry",
+            )
         check_response(response)
         return response
     raise AssertionError("Unreachable request state")
@@ -132,24 +176,33 @@ def spotify_get(path: str, params: dict | None = None) -> httpx.Response:
 
 def list_devices() -> list[dict]:
     from spotify_mcp_assistant.playback import list_devices as devices
+
     return devices()
 
 
 def search_tracks(query: str, limit: int = 5) -> list[dict]:
     from spotify_mcp_assistant.catalog import search_tracks as search
+
     return search(query, limit)
 
 
 def get_playback_state() -> dict:
     from spotify_mcp_assistant.playback import get_playback_state as state
+
     return state()
 
 
 def play_track(track_uri: str, device_id: str, dry_run: bool = True) -> dict:
     from pydantic import TypeAdapter
+
     from spotify_mcp_assistant.models import TrackURI
-    from spotify_mcp_assistant.playback import require_device, _play_track
+    from spotify_mcp_assistant.playback import _play_track, require_device
+
     if not re.fullmatch(r"^spotify:track:[A-Za-z0-9]{22}$", track_uri):
-        raise SpotifyError("invalid_track", "Invalid track URI", "Use a URI returned by search_tracks")
+        raise SpotifyError(
+            "invalid_track", "Invalid track URI", "Use a URI returned by search_tracks"
+        )
     TypeAdapter(TrackURI).validate_python(track_uri)
-    return _play_track(track_uri, require_device(device_id, devices=list_devices()), dry_run)
+    return _play_track(
+        track_uri, require_device(device_id, devices=list_devices()), dry_run
+    )

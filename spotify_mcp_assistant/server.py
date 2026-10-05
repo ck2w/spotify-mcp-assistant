@@ -1,11 +1,5 @@
-from typing import Annotated
-
 from fastmcp import FastMCP
-from pydantic import Field, StringConstraints
 
-from spotify_mcp_assistant import spotify_client
-from spotify_mcp_assistant.models import DevicesResult, PlaybackResult, PlayResult, SearchResult
-from spotify_mcp_assistant.spotify_client import SpotifyError
 
 def create_server() -> FastMCP:
     server = FastMCP(
@@ -30,8 +24,8 @@ def create_server() -> FastMCP:
         ),
     )
 
+    from spotify_mcp_assistant.tools import catalog, library, playback, playlists
 
-    from spotify_mcp_assistant.tools import catalog, playlists, library, playback
     catalog.register_tools(server)
     playlists.register_tools(server)
     library.register_tools(server)
@@ -40,6 +34,7 @@ def create_server() -> FastMCP:
 
 
 mcp = create_server()
+
 
 def main() -> None:
     mcp.run(transport="stdio")

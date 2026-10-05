@@ -1,15 +1,20 @@
-from typing import Annotated
+from typing import Annotated, Literal
 
-from fastmcp import FastMCP
 from pydantic import Field, StringConstraints
 
-from spotify_mcp_assistant import spotify_client
-from spotify_mcp_assistant.models import DevicesResult, PlaybackResult, PlayResult, SearchResult
+from spotify_mcp_assistant import playback, spotify_client
+from spotify_mcp_assistant.models import (
+    BusinessResult,
+    DeviceID,
+    DevicesResult,
+    MutationData,
+    PlaybackResult,
+    PlaylistURI,
+    PlayResult,
+    QueueData,
+    TrackURI,
+)
 from spotify_mcp_assistant.spotify_client import SpotifyError
-
-from typing import Literal
-from spotify_mcp_assistant import playback
-from spotify_mcp_assistant.models import BusinessResult,MutationData,DeviceID,PlaylistURI,TrackURI,QueueData
 from spotify_mcp_assistant.tools import result
 
 
@@ -27,7 +32,6 @@ def register_tools(server):
         except SpotifyError as error:
             return DevicesResult(ok=False, error=error.error)
 
-
     @server.tool(annotations={"readOnlyHint": True})
     def get_playback_state() -> PlaybackResult:
         """Read the current song, device, playback status and progress.
@@ -39,7 +43,6 @@ def register_tools(server):
             return PlaybackResult(ok=True, data=state)
         except SpotifyError as error:
             return PlaybackResult(ok=False, error=error.error)
-
 
     @server.tool(
         annotations={
@@ -82,64 +85,177 @@ def register_tools(server):
         except SpotifyError as error:
             return PlayResult(ok=False, error=error.error)
 
-
-
-    @server.tool(annotations={"readOnlyHint":False,"destructiveHint":True,"idempotentHint":False,"openWorldHint":True})
-    def pause_playback(device_id:DeviceID)->BusinessResult[MutationData]:
+    @server.tool(
+        annotations={
+            "readOnlyHint": False,
+            "destructiveHint": True,
+            "idempotentHint": False,
+            "openWorldHint": True,
+        }
+    )
+    def pause_playback(device_id: DeviceID) -> BusinessResult[MutationData]:
         """Execute pause_playback immediately on the explicitly selected device; no preview or extra confirmation. Only use for a clear user request. Verify with get_playback_state. Unknown writes must not be blindly retried."""
-        return result(BusinessResult[MutationData],playback.pause_playback,device_id)
+        return result(BusinessResult[MutationData], playback.pause_playback, device_id)
 
-    @server.tool(annotations={"readOnlyHint":False,"destructiveHint":True,"idempotentHint":False,"openWorldHint":True})
-    def resume_playback(device_id:DeviceID)->BusinessResult[MutationData]:
+    @server.tool(
+        annotations={
+            "readOnlyHint": False,
+            "destructiveHint": True,
+            "idempotentHint": False,
+            "openWorldHint": True,
+        }
+    )
+    def resume_playback(device_id: DeviceID) -> BusinessResult[MutationData]:
         """Execute resume_playback immediately on the explicitly selected device; no preview or extra confirmation. Only use for a clear user request. Resume saved progress without replacing the playback context. Verify with get_playback_state. Unknown writes must not be blindly retried."""
-        return result(BusinessResult[MutationData],playback.resume_playback,device_id)
+        return result(BusinessResult[MutationData], playback.resume_playback, device_id)
 
-    @server.tool(annotations={"readOnlyHint":False,"destructiveHint":True,"idempotentHint":False,"openWorldHint":True})
-    def next_track(device_id:DeviceID)->BusinessResult[MutationData]:
+    @server.tool(
+        annotations={
+            "readOnlyHint": False,
+            "destructiveHint": True,
+            "idempotentHint": False,
+            "openWorldHint": True,
+        }
+    )
+    def next_track(device_id: DeviceID) -> BusinessResult[MutationData]:
         """Execute next_track immediately on the explicitly selected device; no preview or extra confirmation. Only use for a clear user request. Verify with get_playback_state. Unknown writes must not be blindly retried."""
-        return result(BusinessResult[MutationData],playback.next_track,device_id)
+        return result(BusinessResult[MutationData], playback.next_track, device_id)
 
-    @server.tool(annotations={"readOnlyHint":False,"destructiveHint":True,"idempotentHint":False,"openWorldHint":True})
-    def previous_track(device_id:DeviceID)->BusinessResult[MutationData]:
+    @server.tool(
+        annotations={
+            "readOnlyHint": False,
+            "destructiveHint": True,
+            "idempotentHint": False,
+            "openWorldHint": True,
+        }
+    )
+    def previous_track(device_id: DeviceID) -> BusinessResult[MutationData]:
         """Execute previous_track immediately on the explicitly selected device; no preview or extra confirmation. Only use for a clear user request. Verify with get_playback_state. Unknown writes must not be blindly retried."""
-        return result(BusinessResult[MutationData],playback.previous_track,device_id)
+        return result(BusinessResult[MutationData], playback.previous_track, device_id)
 
-    @server.tool(annotations={"readOnlyHint":False,"destructiveHint":True,"idempotentHint":False,"openWorldHint":True})
-    def seek_playback(position_ms:Annotated[int,Field(ge=0)],device_id:DeviceID)->BusinessResult[MutationData]:
+    @server.tool(
+        annotations={
+            "readOnlyHint": False,
+            "destructiveHint": True,
+            "idempotentHint": False,
+            "openWorldHint": True,
+        }
+    )
+    def seek_playback(
+        position_ms: Annotated[int, Field(ge=0)], device_id: DeviceID
+    ) -> BusinessResult[MutationData]:
         """Execute seek_playback immediately on the explicitly selected device; no preview or extra confirmation. Only use for a clear user request. Verify with get_playback_state. Unknown writes must not be blindly retried."""
-        return result(BusinessResult[MutationData],playback.seek_playback,position_ms,device_id)
+        return result(
+            BusinessResult[MutationData], playback.seek_playback, position_ms, device_id
+        )
 
-    @server.tool(annotations={"readOnlyHint":False,"destructiveHint":True,"idempotentHint":False,"openWorldHint":True})
-    def set_volume(volume_percent:Annotated[int,Field(ge=0,le=100)],device_id:DeviceID)->BusinessResult[MutationData]:
+    @server.tool(
+        annotations={
+            "readOnlyHint": False,
+            "destructiveHint": True,
+            "idempotentHint": False,
+            "openWorldHint": True,
+        }
+    )
+    def set_volume(
+        volume_percent: Annotated[int, Field(ge=0, le=100)], device_id: DeviceID
+    ) -> BusinessResult[MutationData]:
         """Execute set_volume immediately on the explicitly selected device; no preview or extra confirmation. Only use for a clear user request. Verify with get_playback_state. Unknown writes must not be blindly retried."""
-        return result(BusinessResult[MutationData],playback.set_volume,volume_percent,device_id)
+        return result(
+            BusinessResult[MutationData], playback.set_volume, volume_percent, device_id
+        )
 
-    @server.tool(annotations={"readOnlyHint":False,"destructiveHint":True,"idempotentHint":False,"openWorldHint":True})
-    def set_shuffle(state:bool,device_id:DeviceID)->BusinessResult[MutationData]:
+    @server.tool(
+        annotations={
+            "readOnlyHint": False,
+            "destructiveHint": True,
+            "idempotentHint": False,
+            "openWorldHint": True,
+        }
+    )
+    def set_shuffle(state: bool, device_id: DeviceID) -> BusinessResult[MutationData]:
         """Execute set_shuffle immediately on the explicitly selected device; no preview or extra confirmation. Only use for a clear user request. Verify with get_playback_state. Unknown writes must not be blindly retried."""
-        return result(BusinessResult[MutationData],playback.set_shuffle,state,device_id)
+        return result(
+            BusinessResult[MutationData], playback.set_shuffle, state, device_id
+        )
 
-    @server.tool(annotations={"readOnlyHint":False,"destructiveHint":True,"idempotentHint":False,"openWorldHint":True})
-    def set_repeat(state:Literal["off","context","track"],device_id:DeviceID)->BusinessResult[MutationData]:
+    @server.tool(
+        annotations={
+            "readOnlyHint": False,
+            "destructiveHint": True,
+            "idempotentHint": False,
+            "openWorldHint": True,
+        }
+    )
+    def set_repeat(
+        state: Literal["off", "context", "track"], device_id: DeviceID
+    ) -> BusinessResult[MutationData]:
         """Execute set_repeat immediately on the explicitly selected device; no preview or extra confirmation. Only use for a clear user request. Verify with get_playback_state. Unknown writes must not be blindly retried."""
-        return result(BusinessResult[MutationData],playback.set_repeat,state,device_id)
+        return result(
+            BusinessResult[MutationData], playback.set_repeat, state, device_id
+        )
 
-    @server.tool(annotations={'readOnlyHint':False,'destructiveHint':True,'idempotentHint':False,'openWorldHint':True})
-    def play_playlist(playlist_uri:PlaylistURI,device_id:DeviceID,dry_run:bool=True)->BusinessResult[MutationData]:
+    @server.tool(
+        annotations={
+            "readOnlyHint": False,
+            "destructiveHint": True,
+            "idempotentHint": False,
+            "openWorldHint": True,
+        }
+    )
+    def play_playlist(
+        playlist_uri: PlaylistURI, device_id: DeviceID, dry_run: bool = True
+    ) -> BusinessResult[MutationData]:
         """Preview starting a playlist context on the chosen device. Wait for a new user confirmation before dry_run=false with identical parameters. Verify context_uri/device/is_playing via get_playback_state."""
-        return result(BusinessResult[MutationData],playback.play_playlist,playlist_uri,device_id,dry_run)
+        return result(
+            BusinessResult[MutationData],
+            playback.play_playlist,
+            playlist_uri,
+            device_id,
+            dry_run,
+        )
 
-    @server.tool(annotations={'readOnlyHint':False,'destructiveHint':True,'idempotentHint':False,'openWorldHint':True})
-    def transfer_playback(device_id:DeviceID,play:bool=False,dry_run:bool=True)->BusinessResult[MutationData]:
+    @server.tool(
+        annotations={
+            "readOnlyHint": False,
+            "destructiveHint": True,
+            "idempotentHint": False,
+            "openWorldHint": True,
+        }
+    )
+    def transfer_playback(
+        device_id: DeviceID, play: bool = False, dry_run: bool = True
+    ) -> BusinessResult[MutationData]:
         """Preview moving playback to one chosen device. play=false does not request starting playback. Wait for new user confirmation before execution; verify target with get_playback_state."""
-        return result(BusinessResult[MutationData],playback.transfer_playback,device_id,play,dry_run)
+        return result(
+            BusinessResult[MutationData],
+            playback.transfer_playback,
+            device_id,
+            play,
+            dry_run,
+        )
 
-    @server.tool(annotations={'readOnlyHint':True})
-    def get_queue()->BusinessResult[QueueData]:
+    @server.tool(annotations={"readOnlyHint": True})
+    def get_queue() -> BusinessResult[QueueData]:
         """Read the current user's queue (no device parameter or pagination). This is a dynamic observation and may not prove a previous add succeeded."""
-        return result(BusinessResult[QueueData],playback.get_queue)
+        return result(BusinessResult[QueueData], playback.get_queue)
 
-    @server.tool(annotations={'readOnlyHint':False,'destructiveHint':False,'idempotentHint':False,'openWorldHint':True})
-    def add_to_queue(track_uri:TrackURI,device_id:DeviceID,dry_run:bool=True)->BusinessResult[MutationData]:
+    @server.tool(
+        annotations={
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": False,
+            "openWorldHint": True,
+        }
+    )
+    def add_to_queue(
+        track_uri: TrackURI, device_id: DeviceID, dry_run: bool = True
+    ) -> BusinessResult[MutationData]:
         """Preview adding one song to the chosen device queue. Confirm in a new user message before execution. Inspect get_queue after submission; never blindly repeat an unknown write."""
-        return result(BusinessResult[MutationData],playback.add_to_queue,track_uri,device_id,dry_run)
+        return result(
+            BusinessResult[MutationData],
+            playback.add_to_queue,
+            track_uri,
+            device_id,
+            dry_run,
+        )

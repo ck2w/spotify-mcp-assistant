@@ -11,11 +11,16 @@ from urllib.parse import parse_qs, urlencode, urlsplit
 import httpx
 from dotenv import load_dotenv
 
-
 REQUESTED_SCOPES = (
-    "user-read-playback-state", "user-read-currently-playing", "user-modify-playback-state",
-    "playlist-read-private", "playlist-read-collaborative", "playlist-modify-private",
-    "playlist-modify-public", "user-library-read", "user-library-modify",
+    "user-read-playback-state",
+    "user-read-currently-playing",
+    "user-modify-playback-state",
+    "playlist-read-private",
+    "playlist-read-collaborative",
+    "playlist-modify-private",
+    "playlist-modify-public",
+    "user-library-read",
+    "user-library-modify",
 )
 
 
@@ -172,12 +177,16 @@ def save_token(token: dict, path: Path) -> None:
         temp_path.unlink(missing_ok=True)
 
 
-def get_access_token(force_refresh: bool = False, *, required_scopes: tuple[str, ...] = ()) -> str:
+def get_access_token(
+    force_refresh: bool = False, *, required_scopes: tuple[str, ...] = ()
+) -> str:
     directory = get_config_dir()
     token_path = directory / ".spotify_token.json"
 
     if not token_path.exists():
-        raise AuthorizationRequiredError("auth_required: Run spotify-mcp-auth to authorize.")
+        raise AuthorizationRequiredError(
+            "auth_required: Run spotify-mcp-auth to authorize."
+        )
 
     with token_path.open(encoding="utf-8") as file:
         token = json.load(file)
@@ -209,7 +218,9 @@ def get_access_token(force_refresh: bool = False, *, required_scopes: tuple[str,
 
     response.raise_for_status()
     refreshed = response.json()
-    refreshed["refresh_token"] = refreshed.get("refresh_token") or token["refresh_token"]
+    refreshed["refresh_token"] = (
+        refreshed.get("refresh_token") or token["refresh_token"]
+    )
     token.update(refreshed)
     token["expires_at"] = time.time() + refreshed["expires_in"]
     save_token(token, token_path)

@@ -1,4 +1,5 @@
 """Thin MCP adapters; domain errors may retain partial progress."""
+
 from spotify_mcp_assistant.spotify_client import SpotifyError
 
 
