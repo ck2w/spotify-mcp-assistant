@@ -8,7 +8,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 import httpx
-from dotenv import load_dotenv
+from dotenv import dotenv_values
 
 from spotify_mcp_assistant.private_files import atomic_private_write, token_lock
 
@@ -60,7 +60,7 @@ def get_config_dir() -> Path:
 def load_config(env_file: Path) -> dict[str, str]:
     """Load Spotify configuration and reject missing values."""
 
-    load_dotenv(env_file)
+    values = dotenv_values(env_file, interpolate=False)
 
     names = [
         "SPOTIFY_CLIENT_ID",
@@ -68,7 +68,7 @@ def load_config(env_file: Path) -> dict[str, str]:
         "SPOTIFY_REDIRECT_URI",
     ]
 
-    config = {name: os.environ.get(name, "") for name in names}
+    config = {name: values.get(name, os.environ.get(name, "")) or "" for name in names}
     missing = [name for name, value in config.items() if not value.strip()]
 
     if missing:
