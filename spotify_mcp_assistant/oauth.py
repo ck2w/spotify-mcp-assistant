@@ -16,6 +16,17 @@ class AuthorizationRequiredError(ValueError):
     pass
 
 
+def get_config_dir() -> Path:
+    value = os.environ.get("SPOTIFY_CONFIG_DIR")
+    if value is None:
+        return Path.home() / ".config" / "spotify-mcp-assistant"
+
+    directory = Path(value).expanduser()
+    if not value.strip() or not directory.is_absolute():
+        raise ValueError("SPOTIFY_CONFIG_DIR must be an absolute directory path")
+    return directory
+
+
 def load_config(env_file: Path) -> dict[str, str]:
     """Load Spotify configuration and reject missing values."""
 
@@ -138,7 +149,7 @@ def save_token(token: dict, path: Path) -> None:
 
 
 def get_access_token(force_refresh: bool = False) -> str:
-    directory = Path(__file__).resolve().parent
+    directory = get_config_dir()
     token_path = directory / ".spotify_token.json"
 
     if not token_path.exists():
@@ -181,13 +192,15 @@ def get_access_token(force_refresh: bool = False) -> str:
 
 
 def main() -> None:
-    env_file = Path(__file__).resolve().with_name(".env")
+    directory = get_config_dir()
+    directory.mkdir(parents=True, exist_ok=True)
+    env_file = directory / ".env"
     config = load_config(env_file)
     url, state = build_authorization_url(config)
     code = receive_authorization_code(url, state)
 
     token = exchange_code(config, code)
-    token_path = Path(__file__).resolve().with_name(".spotify_token.json")
+    token_path = directory / ".spotify_token.json"
     save_token(token, token_path)
 
     print("Authorization completed. Token cache saved.")
