@@ -13,8 +13,11 @@ class SpotifyError(Exception):
         next_action,
         retryable=False,
         retry_after_seconds=None,
+        *,
+        data=None,
     ):
         super().__init__(message)
+        self.data = data
         self.error = {
             "code": code,
             "message": message,
@@ -72,55 +75,52 @@ def check_response(response: httpx.Response) -> None:
     )
 
 
-def spotify_get(path: str, params: dict | None = None) -> httpx.Response:
-    try:
-        for attempt in range(2):
+def spotify_request(
+    method: str, path: str, *, params: dict | None = None,
+    json: dict | None = None, unknown_code: str = "write_result_unknown",
+) -> httpx.Response:
+    """Reads may refresh once. Writes are never replayed after submission."""
+    method = method.upper()
+    if method not in {"GET", "POST", "PUT", "DELETE"} or not path.startswith("/") or path.startswith("//"):
+        raise ValueError("Expected a supported method and relative Spotify API path")
+    for attempt in range(2 if method == "GET" else 1):
+        try:
             token = get_access_token(force_refresh=attempt == 1)
-            response = httpx.get(
-                f"https://api.spotify.com/v1{path}",
-                headers={"Authorization": f"Bearer {token}"},
-                params=params,
-                timeout=15,
-            )
+        except AuthorizationRequiredError:
+            raise SpotifyError("auth_required", "Spotify authorization is unavailable",
+                               "Run spotify-mcp-auth to authorize again") from None
+        except httpx.HTTPStatusError:
+            raise SpotifyError("oauth_config_error", "Spotify rejected token refresh",
+                               "Check configuration or run spotify-mcp-auth again") from None
+        except httpx.RequestError:
+            raise SpotifyError("network_error", "Could not obtain a Spotify access token",
+                               "Check your connection and retry later", retryable=True) from None
+        except (ValueError, OSError, KeyError, TypeError):
+            raise SpotifyError("oauth_config_error", "Spotify configuration or token cache is invalid",
+                               "Check configuration and run spotify-mcp-auth again") from None
+        kwargs = {"headers": {"Authorization": f"Bearer {token}"}, "params": params, "timeout": 15}
+        if json is not None:
+            kwargs["json"] = json
+        try:
+            response = getattr(httpx, method.lower())(f"https://api.spotify.com/v1{path}", **kwargs)
+        except httpx.RequestError:
+            if method != "GET":
+                raise SpotifyError(unknown_code, "Could not determine whether the write completed",
+                                   "Read the affected state before deciding whether to retry") from None
+            raise SpotifyError("network_error", "Could not read Spotify state",
+                               "Check your connection and retry later", retryable=True) from None
+        if method == "GET" and response.status_code == 401 and attempt == 0:
+            continue
+        if method != "GET" and response.status_code >= 500:
+            raise SpotifyError(unknown_code, "Spotify could not confirm the write result",
+                               "Read the affected state before deciding whether to retry")
+        check_response(response)
+        return response
+    raise AssertionError("Unreachable request state")
 
-            if response.status_code != 401 or attempt == 1:
-                break
 
-    except AuthorizationRequiredError:
-        raise SpotifyError(
-            "auth_required",
-            "Spotify authorization is missing, expired, or revoked",
-            "Run spotify-mcp-auth to authorize again",
-        ) from None
-
-    except httpx.HTTPStatusError as error:
-        if error.response.status_code in (400, 401):
-            raise SpotifyError(
-                "oauth_config_error",
-                "Spotify rejected the token refresh request",
-                "Check your Spotify app credentials and OAuth configuration",
-            ) from None
-
-        check_response(error.response)
-
-    except httpx.TimeoutException:
-        raise SpotifyError(
-            "network_error",
-            "Spotify request timed out",
-            "Check your connection and retry later",
-            retryable=True,
-        ) from None
-
-    except httpx.RequestError:
-        raise SpotifyError(
-            "network_error",
-            "Could not connect to Spotify",
-            "Check your connection and retry later",
-            retryable=True,
-        ) from None
-
-    check_response(response)
-    return response
+def spotify_get(path: str, params: dict | None = None) -> httpx.Response:
+    return spotify_request("GET", path, params=params)
 
 
 def list_devices() -> list[dict]:
