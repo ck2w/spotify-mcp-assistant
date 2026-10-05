@@ -60,7 +60,7 @@
 - [ ] 创建空 __init__.py 和 pyproject.toml。沿用 Poetry 元数据格式，version=0.1.0，readme=README.md，声明新包；运行时四个依赖与开发 pytest 使用本计划 Tech Stack 的约束；build-system 沿用 poetry-core>=1.7.0。不复制原作者、课程描述、package-mode=false 或无关依赖。
 - [ ] 将 server 和 oauth 原 `if __name__ == "__main__"` 中的代码原样移入 main()，保留该 guard 调用 main()；server.main 仍运行 `mcp.run(transport="stdio")`。
 - [ ] 将源码中旧授权命令替换为 `spotify-mcp-auth`；现有授权错误测试的断言改为包含这个入口名，不改错误码或 retryable 值。
-- [ ] 创建 `.venv`，安装独立项目和 pytest：`python3 -m venv .venv`，然后 `.venv/bin/python -m pip install -e . pytest`。若 FastMCP ^4.0.10 不可解析或当前解释器不兼容，记录实际错误并停止依赖变更；不得静默降级或复制来源环境。
+- [ ] 使用 Poetry 创建和管理项目内环境：`POETRY_VIRTUALENVS_IN_PROJECT=true poetry env use python3.12`，再用相同设置运行 `poetry install`；生成并提交本项目 poetry.lock。当前 python3 为 3.9.6，使用已检查的 Python 3.12.8。若 FastMCP ^4.0.10 不可解析或解释器不兼容，记录实际错误；不得静默降级或复制来源环境。
 - [ ] 运行 `.venv/bin/python -m pytest tests -v`，预期既有 9 个用例通过；默认预览用例必须继续断言零 PUT 且不读取真实 token。不要通过删除断言适配迁移。
 - [ ] 在目标仓库外的临时 cwd 用新环境 Python 验证 `import spotify_mcp_assistant`，清除该检查进程的 PYTHONPATH。使用 FastMCP Client 的 stdio subprocess transport 启动 `python -m spotify_mcp_assistant.server` 并仅调用 list_tools，断言工具名集合恰好为四工具；不调用 Spotify 工具。用安装后的 console script 再检查启动发现，避免入口存在但不可启动。
 - [ ] 检查安装元数据包含两个 console_scripts，且 oauth.main 可导入；此时不执行授权入口。提交此项：`build: migrate existing Spotify MCP into installable package`。
