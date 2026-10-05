@@ -2,12 +2,17 @@
 
 import copy
 import json
+import os
+import tempfile
+import time
+import uuid
 from collections.abc import MutableMapping
 from pathlib import Path
 
 import tomlkit
 
-from spotify_mcp_assistant.setup_types import ClientName, LaunchSpec, MergeResult, SetupError
+from spotify_mcp_assistant.private_files import atomic_private_write
+from spotify_mcp_assistant.setup_types import ClientName, ClientResult, ConfigTarget, LaunchSpec, MergeResult, SetupError
 
 CLIENTS: tuple[ClientName, ...] = ("claude-desktop", "claude-code", "codex", "cursor")
 
@@ -93,3 +98,59 @@ def merge_client_config(client: ClientName, text: str | None, launch: LaunchSpec
         return MergeResult(rendered if changed else text or rendered, changed)
     except (ValueError, TypeError, KeyError, tomlkit.exceptions.TOMLKitError):
         raise SetupError("invalid_client_config", "Client configuration is malformed or has an unsupported structure.") from None
+
+
+def prepare_target(client: ClientName, path: Path, launch: LaunchSpec, *, replace_conflict: bool = False) -> ConfigTarget:
+    original = None
+    try:
+        if path.is_symlink():
+            raise SetupError("client_config_symlink", "Client configuration is a symlink; configure its target manually.")
+        original = path.read_bytes() if path.exists() else None
+        result = merge_client_config(client, original.decode("utf-8") if original is not None else None, launch, replace_conflict=replace_conflict)
+        status = "conflict" if result.conflict else "ready" if result.changed else "unchanged"
+        return ConfigTarget(client, path, original, result.text.encode("utf-8"), status)
+    except SetupError as error:
+        code = error.code
+    except (OSError, UnicodeError):
+        code = "client_config_unreadable"
+    return ConfigTarget(client, path, original, None, "invalid", code)
+
+
+def _unchanged_source(target: ConfigTarget) -> bool:
+    if target.path.is_symlink():
+        return False
+    current = target.path.read_bytes() if target.path.exists() else None
+    return current == target.original
+
+
+def commit_target(target: ConfigTarget) -> ClientResult:
+    backup = None
+    temporary = None
+    try:
+        if target.status not in {"ready", "unchanged"} or target.candidate is None:
+            return ClientResult(target.client, "failed", target.path, error_code=target.error_code or "config_conflict")
+        if not _unchanged_source(target):
+            return ClientResult(target.client, "failed", target.path, error_code="client_config_changed")
+        if target.status == "unchanged":
+            return ClientResult(target.client, "unchanged", target.path)
+        target.path.parent.mkdir(parents=True, exist_ok=True)
+        mode = target.path.stat().st_mode & 0o777 if target.original is not None else 0o600
+        if target.original is not None:
+            suffix = f".backup-{time.time_ns()}-{uuid.uuid4().hex[:8]}"
+            backup = target.path.with_name(target.path.name + suffix)
+            atomic_private_write(backup, target.original)
+        with tempfile.NamedTemporaryFile(dir=target.path.parent, delete=False) as file:
+            temporary = Path(file.name)
+            os.fchmod(file.fileno(), mode)
+            file.write(target.candidate)
+            file.flush()
+            os.fsync(file.fileno())
+        if not _unchanged_source(target):
+            return ClientResult(target.client, "failed", target.path, backup, "client_config_changed")
+        os.replace(temporary, target.path)
+        return ClientResult(target.client, "written", target.path, backup)
+    except OSError:
+        return ClientResult(target.client, "failed", target.path, backup, "client_config_write_failed")
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
