@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "spotify-mcp-assistant"
-version = "0.2.0"
+version = "0.3.0"
 description = "A Spotify MCP server for playlists, playback, queues, and favorites"
 readme = "README.md"
 packages = [{ include = "spotify_mcp_assistant" }]
@@ -19,6 +19,7 @@ pytest = ">=7.0.0"
 [tool.poetry.scripts]
 spotify-mcp-assistant = "spotify_mcp_assistant.server:main"
 spotify-mcp-auth = "spotify_mcp_assistant.oauth:main"
+spotify-mcp-setup = "spotify_mcp_assistant.setup:main"
 
 [build-system]
 requires = ["poetry-core>=1.7.0"]
