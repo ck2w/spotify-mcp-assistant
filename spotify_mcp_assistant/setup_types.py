@@ -15,7 +15,9 @@ class SetupError(Exception):
 
 class LockTimeoutError(SetupError):
     def __init__(self):
-        super().__init__("auth_busy", "Another process is authorizing or refreshing; retry shortly.")
+        super().__init__(
+            "auth_busy", "Another process is authorizing or refreshing; retry shortly."
+        )
 
 
 @dataclass(frozen=True)

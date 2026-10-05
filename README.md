@@ -4,16 +4,43 @@ Find and play music through conversations in Claude Code or Claude Desktop:
 
 **Search → Choose a track and device → Preview → Confirm → Play → Verify**
 
-An independent Python project built with **FastMCP over stdio**. Version 0.2.0 exposes **32 tools** for tracks, playlists, playback, queues, and favorites. Claude and other MCP clients handle conversations and orchestration; this project is the MCP server.
+An independent Python project built with **FastMCP over stdio**. Version 0.3.0 exposes **32 tools** for tracks, playlists, playback, queues, and favorites, with a **macOS setup wizard for Claude Desktop, Claude Code, Codex and Cursor**. The client handles conversations and orchestration; this project is the MCP server.
 
-## 🧭 Start here
+## macOS quick setup
+
+The wizard prepares a persistent installation, guides Spotify authorization, backs up and merges the selected clients' user-level configuration, and checks all 32 tools over real stdio. You still need your own Spotify Developer App and first-time browser consent.
+
+**Version 0.3.0 has not been published to PyPI by this project.** Use a wheel supplied by the maintainer or build one from this checkout. Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then run:
+
+```bash
+# Replace this with the absolute path of the downloaded/built wheel
+uv tool install --python 3.12 /ABSOLUTE/PATH/spotify_mcp_assistant-0.3.0-py3-none-any.whl
+
+# Select one or more clients in the wizard
+uvx --from spotify-mcp-assistant==0.3.0 spotify-mcp-setup
+```
+
+After the tool installation, uvx reuses that installed version. You do not need Poetry or a source checkout to use a supplied wheel. To select clients directly:
+
+```bash
+uvx --from spotify-mcp-assistant==0.3.0 spotify-mcp-setup \
+  --client cursor --client codex --client claude-desktop --client claude-code
+```
+
+Run in an interactive terminal. The wizard prints client-specific restart instructions. Successful setup verifies authorization, MCP discovery and configuration separately; it does not establish that a client has loaded the configuration or that playback works. See [installation and recovery](docs/installation.md) and [client acceptance status](docs/client-acceptance.md).
+
+Once this exact release is published, the separate wheel-install step can be replaced by the public `uvx --python 3.12 --from spotify-mcp-assistant==0.3.0 spotify-mcp-setup` bootstrap command. That public download flow is not yet verified.
+
+## 🧭 Manual setup and development
+
+The following source-based instructions remain available for development and manual Claude registration. For ordinary macOS use, start with the wizard above.
 
 1. [Install the project](#-1-install-the-project)
 2. [Configure Spotify and authorize](#-2-configure-spotify-and-authorize)
 3. Connect [Claude Code](#-3-connect-claude-code) or [Claude Desktop](#-4-connect-claude-desktop)
 4. [Start using the assistant](#-5-start-using-the-assistant)
 
-Both clients can use the same private configuration directory and authorization.
+All four supported clients can use the same private configuration directory and authorization. A shared account change affects every client using that directory.
 
 ## 📦 1. Install the project
 

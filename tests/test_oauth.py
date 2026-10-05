@@ -20,7 +20,12 @@ def test_main_failed_authorization_preserves_cache(tmp_path, monkeypatch):
 
     monkeypatch.setenv("SPOTIFY_CONFIG_DIR", str(tmp_path))
     monkeypatch.setattr(oauth, "load_config", lambda _: {})
-    monkeypatch.setattr(oauth, "authorize", lambda _: (_ for _ in ()).throw(ValueError("denied")), raising=False)
+    monkeypatch.setattr(
+        oauth,
+        "authorize",
+        lambda _: (_ for _ in ()).throw(ValueError("denied")),
+        raising=False,
+    )
     token = tmp_path / ".spotify_token.json"
     token.write_text('{"access_token":"keep"}')
     with pytest.raises(ValueError, match="denied"):
@@ -30,11 +35,22 @@ def test_main_failed_authorization_preserves_cache(tmp_path, monkeypatch):
 
 def test_refresh_token_returns_copy_with_preserved_metadata(monkeypatch):
     import httpx
+
     from spotify_mcp_assistant import oauth
 
     old = {"refresh_token": "old-refresh", "scope": "user-library-read"}
-    monkeypatch.setattr(oauth.httpx, "post", lambda *a, **k: httpx.Response(200, json={"access_token": "new", "expires_in": 3600}, request=httpx.Request("POST", "https://example.test")))
-    new = oauth.refresh_token({"SPOTIFY_CLIENT_ID": "fake", "SPOTIFY_CLIENT_SECRET": "fake"}, old)
+    monkeypatch.setattr(
+        oauth.httpx,
+        "post",
+        lambda *a, **k: httpx.Response(
+            200,
+            json={"access_token": "new", "expires_in": 3600},
+            request=httpx.Request("POST", "https://example.test"),
+        ),
+    )
+    new = oauth.refresh_token(
+        {"SPOTIFY_CLIENT_ID": "fake", "SPOTIFY_CLIENT_SECRET": "fake"}, old
+    )
     assert new["refresh_token"] == "old-refresh"
     assert new["scope"] == "user-library-read"
     assert new["access_token"] == "new"
@@ -43,17 +59,26 @@ def test_refresh_token_returns_copy_with_preserved_metadata(monkeypatch):
 
 def refresh_worker(directory, starting, release, results, count):
     import os
+
     import httpx
+
     from spotify_mcp_assistant import oauth
 
     os.environ["SPOTIFY_CONFIG_DIR"] = directory
-    oauth.load_config = lambda _: {"SPOTIFY_CLIENT_ID": "fake", "SPOTIFY_CLIENT_SECRET": "fake"}
+    oauth.load_config = lambda _: {
+        "SPOTIFY_CLIENT_ID": "fake",
+        "SPOTIFY_CLIENT_SECRET": "fake",
+    }
 
     def post(*args, **kwargs):
         with count.get_lock():
             count.value += 1
         assert release.wait(5)
-        return httpx.Response(200, json={"access_token": "new", "expires_in": 3600}, request=httpx.Request("POST", "https://example.test"))
+        return httpx.Response(
+            200,
+            json={"access_token": "new", "expires_in": 3600},
+            request=httpx.Request("POST", "https://example.test"),
+        )
 
     oauth.httpx.post = post
     starting.wait()
@@ -65,10 +90,24 @@ def test_concurrent_refresh_rechecks_cache(tmp_path):
     import multiprocessing
     import time
 
-    (tmp_path / ".spotify_token.json").write_text(json.dumps({"access_token": "old", "refresh_token": "old-refresh", "expires_at": 0}))
+    (tmp_path / ".spotify_token.json").write_text(
+        json.dumps(
+            {"access_token": "old", "refresh_token": "old-refresh", "expires_at": 0}
+        )
+    )
     ctx = multiprocessing.get_context("spawn")
-    start, release, results, count = ctx.Barrier(3), ctx.Event(), ctx.Queue(), ctx.Value("i", 0)
-    workers = [ctx.Process(target=refresh_worker, args=(str(tmp_path), start, release, results, count)) for _ in range(2)]
+    start, release, results, count = (
+        ctx.Barrier(3),
+        ctx.Event(),
+        ctx.Queue(),
+        ctx.Value("i", 0),
+    )
+    workers = [
+        ctx.Process(
+            target=refresh_worker, args=(str(tmp_path), start, release, results, count)
+        )
+        for _ in range(2)
+    ]
     for worker in workers:
         worker.start()
     start.wait(timeout=5)

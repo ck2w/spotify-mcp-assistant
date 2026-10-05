@@ -10,21 +10,54 @@ from mcp.client.stdio import stdio_client
 
 from spotify_mcp_assistant.setup_types import CheckResult, LaunchSpec
 
-EXPECTED_TOOLS = frozenset({
-    "search_tracks", "get_track", "list_playlists", "get_playlist", "get_playlist_tracks",
-    "create_playlist", "update_playlist_details", "add_playlist_tracks", "remove_playlist_tracks",
-    "replace_playlist_tracks", "reorder_playlist_tracks", "save_playlist", "unsave_playlist",
-    "list_devices", "get_playback_state", "play_track", "play_playlist", "transfer_playback",
-    "pause_playback", "resume_playback", "next_track", "previous_track", "seek_playback",
-    "set_volume", "set_shuffle", "set_repeat", "get_queue", "add_to_queue", "get_saved_tracks",
-    "save_tracks", "remove_saved_tracks", "check_saved_tracks",
-})
+EXPECTED_TOOLS = frozenset(
+    {
+        "search_tracks",
+        "get_track",
+        "list_playlists",
+        "get_playlist",
+        "get_playlist_tracks",
+        "create_playlist",
+        "update_playlist_details",
+        "add_playlist_tracks",
+        "remove_playlist_tracks",
+        "replace_playlist_tracks",
+        "reorder_playlist_tracks",
+        "save_playlist",
+        "unsave_playlist",
+        "list_devices",
+        "get_playback_state",
+        "play_track",
+        "play_playlist",
+        "transfer_playback",
+        "pause_playback",
+        "resume_playback",
+        "next_track",
+        "previous_track",
+        "seek_playback",
+        "set_volume",
+        "set_shuffle",
+        "set_repeat",
+        "get_queue",
+        "add_to_queue",
+        "get_saved_tracks",
+        "save_tracks",
+        "remove_saved_tracks",
+        "check_saved_tracks",
+    }
+)
 
 
 async def _discover(launch: LaunchSpec, cwd: Path) -> CheckResult:
-    env = {key: value for key, value in os.environ.items() if not key.startswith("SPOTIFY_") and key not in {"PYTHONPATH", "PYTHONHOME"}}
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.startswith("SPOTIFY_") and key not in {"PYTHONPATH", "PYTHONHOME"}
+    }
     env["SPOTIFY_CONFIG_DIR"] = str(launch.config_dir)
-    parameters = StdioServerParameters(command=launch.command, args=list(launch.args), cwd=str(cwd), env=env)
+    parameters = StdioServerParameters(
+        command=launch.command, args=list(launch.args), cwd=str(cwd), env=env
+    )
     # Suppress raw stderr, which could contain third-party diagnostics or identifiers.
     with open(os.devnull, "w") as errors:
         async with stdio_client(parameters, errlog=errors) as streams:
@@ -36,7 +69,9 @@ async def _discover(launch: LaunchSpec, cwd: Path) -> CheckResult:
     return CheckResult("passed")
 
 
-async def check_stdio(launch: LaunchSpec, *, cwd: Path, timeout: float = 30.0) -> CheckResult:
+async def check_stdio(
+    launch: LaunchSpec, *, cwd: Path, timeout: float = 30.0
+) -> CheckResult:
     try:
         return await asyncio.wait_for(_discover(launch, cwd), timeout=timeout)
     except TimeoutError:

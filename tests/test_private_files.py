@@ -13,7 +13,10 @@ def hold_lock(directory, ready, release):
 
 
 def test_private_write_permissions(tmp_path):
-    from spotify_mcp_assistant.private_files import atomic_private_write, secure_private_directory
+    from spotify_mcp_assistant.private_files import (
+        atomic_private_write,
+        secure_private_directory,
+    )
 
     directory = tmp_path / "private"
     secure_private_directory(directory)
@@ -28,7 +31,11 @@ def test_failed_replace_preserves_original(tmp_path, monkeypatch):
 
     target = tmp_path / "secret"
     target.write_bytes(b"old")
-    monkeypatch.setattr(private_files.os, "replace", lambda *a: (_ for _ in ()).throw(OSError("failure")))
+    monkeypatch.setattr(
+        private_files.os,
+        "replace",
+        lambda *a: (_ for _ in ()).throw(OSError("failure")),
+    )
     with pytest.raises(OSError):
         private_files.atomic_private_write(target, b"new")
     assert target.read_bytes() == b"old"

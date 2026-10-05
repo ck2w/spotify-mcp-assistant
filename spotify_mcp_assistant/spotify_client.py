@@ -2,13 +2,12 @@ import re
 
 import httpx
 
-from spotify_mcp_assistant.setup_types import LockTimeoutError
-
 from spotify_mcp_assistant.oauth import (
     AuthorizationRequiredError,
     InsufficientScopeError,
     get_access_token,
 )
+from spotify_mcp_assistant.setup_types import LockTimeoutError
 
 
 class SpotifyError(Exception):

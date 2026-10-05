@@ -6,7 +6,6 @@ import os
 import tempfile
 from pathlib import Path
 
-
 from spotify_mcp_assistant.diagnostics import check_stdio
 from spotify_mcp_assistant.setup_types import LaunchSpec
 
@@ -25,7 +24,9 @@ async def check(server_python: Path, cwd: Path):
             (str(server_python.parent / "spotify-mcp-assistant"), []),
         ]
         for command, args in commands:
-            result = await check_stdio(LaunchSpec(command, tuple(args), Path(config), "installed"), cwd=cwd)
+            result = await check_stdio(
+                LaunchSpec(command, tuple(args), Path(config), "installed"), cwd=cwd
+            )
             assert result.status == "passed", result.code
             print(f"PASS: {command} {args}: 32 tools from {cwd}")
         assert not list(Path(config).iterdir()), (

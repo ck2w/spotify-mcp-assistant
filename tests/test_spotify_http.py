@@ -88,12 +88,19 @@ def test_corrupt_cache_is_sanitized(fake_http, monkeypatch):
     assert caught.value.error["code"] == "oauth_config_error"
     assert "secret-test-value" not in str(caught.value.error)
     assert fake_http.calls == []
+
+
 def test_lock_timeout_maps_to_retryable_auth_busy(monkeypatch):
     import pytest
+
     from spotify_mcp_assistant import spotify_client
     from spotify_mcp_assistant.setup_types import LockTimeoutError
 
-    monkeypatch.setattr(spotify_client, "get_access_token", lambda **k: (_ for _ in ()).throw(LockTimeoutError()))
+    monkeypatch.setattr(
+        spotify_client,
+        "get_access_token",
+        lambda **k: (_ for _ in ()).throw(LockTimeoutError()),
+    )
     with pytest.raises(spotify_client.SpotifyError) as failure:
         spotify_client.spotify_request("PUT", "/me/player/pause")
     assert failure.value.error["code"] == "auth_busy"
