@@ -12,6 +12,30 @@ import httpx
 from dotenv import load_dotenv
 
 
+REQUESTED_SCOPES = (
+    "user-read-playback-state", "user-read-currently-playing", "user-modify-playback-state",
+    "playlist-read-private", "playlist-read-collaborative", "playlist-modify-private",
+    "playlist-modify-public", "user-library-read", "user-library-modify",
+)
+
+
+class InsufficientScopeError(ValueError):
+    def __init__(self, missing_scopes: tuple[str, ...]):
+        self.missing_scopes = missing_scopes
+        super().__init__("Missing scopes: " + ", ".join(missing_scopes))
+
+
+def check_scopes(token: dict, required_scopes: tuple[str, ...]) -> None:
+    granted = token.get("scope")
+    if granted is None:
+        return  # Old cache: let the API determine access.
+    if not isinstance(granted, str):
+        raise ValueError("Invalid scope metadata")
+    missing = tuple(scope for scope in required_scopes if scope not in granted.split())
+    if missing:
+        raise InsufficientScopeError(missing)
+
+
 class AuthorizationRequiredError(ValueError):
     pass
 
@@ -54,7 +78,7 @@ def build_authorization_url(config: dict[str, str]) -> tuple[str, str]:
         "client_id": config["SPOTIFY_CLIENT_ID"],
         "response_type": "code",
         "redirect_uri": config["SPOTIFY_REDIRECT_URI"],
-        "scope": "user-read-playback-state user-modify-playback-state",
+        "scope": " ".join(REQUESTED_SCOPES),
         "state": state,
     }
 
@@ -148,7 +172,7 @@ def save_token(token: dict, path: Path) -> None:
         temp_path.unlink(missing_ok=True)
 
 
-def get_access_token(force_refresh: bool = False) -> str:
+def get_access_token(force_refresh: bool = False, *, required_scopes: tuple[str, ...] = ()) -> str:
     directory = get_config_dir()
     token_path = directory / ".spotify_token.json"
 
@@ -159,6 +183,7 @@ def get_access_token(force_refresh: bool = False) -> str:
         token = json.load(file)
 
     if not force_refresh and time.time() < token["expires_at"] - 60:
+        check_scopes(token, required_scopes)
         return token["access_token"]
 
     config = load_config(directory / ".env")
@@ -188,6 +213,7 @@ def get_access_token(force_refresh: bool = False) -> str:
     token.update(refreshed)
     token["expires_at"] = time.time() + refreshed["expires_in"]
     save_token(token, token_path)
+    check_scopes(token, required_scopes)
     return token["access_token"]
 
 

@@ -58,3 +58,26 @@ def test_token_failure_is_not_unknown(fake_http, monkeypatch):
         api.spotify_request("POST", "/me/playlists")
     assert caught.value.error["code"] == "network_error"
     assert fake_http.calls == []
+
+
+def test_missing_scope_prevents_request(fake_http, monkeypatch):
+    from spotify_mcp_assistant import oauth
+    def fail(**kw):
+        raise oauth.InsufficientScopeError(("user-library-modify",))
+    monkeypatch.setattr(api, "get_access_token", fail)
+    with pytest.raises(api.SpotifyError) as caught:
+        api.spotify_request("PUT", "/me/library", required_scopes=("user-library-modify",))
+    assert caught.value.error["code"] == "insufficient_scope"
+    assert "user-library-modify" in caught.value.error["message"]
+    assert fake_http.calls == []
+
+
+def test_corrupt_cache_is_sanitized(fake_http, monkeypatch):
+    def fail(**kw):
+        raise ValueError("secret-test-value")
+    monkeypatch.setattr(api, "get_access_token", fail)
+    with pytest.raises(api.SpotifyError) as caught:
+        api.spotify_request("PUT", "/me/library")
+    assert caught.value.error["code"] == "oauth_config_error"
+    assert "secret-test-value" not in str(caught.value.error)
+    assert fake_http.calls == []

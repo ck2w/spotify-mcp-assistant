@@ -2,7 +2,7 @@ import re
 
 import httpx
 
-from spotify_mcp_assistant.oauth import AuthorizationRequiredError, get_access_token
+from spotify_mcp_assistant.oauth import AuthorizationRequiredError, InsufficientScopeError, get_access_token
 
 
 class SpotifyError(Exception):
@@ -78,6 +78,7 @@ def check_response(response: httpx.Response) -> None:
 def spotify_request(
     method: str, path: str, *, params: dict | None = None,
     json: dict | None = None, unknown_code: str = "write_result_unknown",
+    required_scopes: tuple[str, ...] = (),
 ) -> httpx.Response:
     """Reads may refresh once. Writes are never replayed after submission."""
     method = method.upper()
@@ -85,7 +86,13 @@ def spotify_request(
         raise ValueError("Expected a supported method and relative Spotify API path")
     for attempt in range(2 if method == "GET" else 1):
         try:
-            token = get_access_token(force_refresh=attempt == 1)
+            token_kwargs = {"force_refresh": attempt == 1}
+            if required_scopes:
+                token_kwargs["required_scopes"] = required_scopes
+            token = get_access_token(**token_kwargs)
+        except InsufficientScopeError as error:
+            raise SpotifyError("insufficient_scope", "Missing scopes: " + ", ".join(error.missing_scopes),
+                               "Run spotify-mcp-auth to grant the required permissions") from None
         except AuthorizationRequiredError:
             raise SpotifyError("auth_required", "Spotify authorization is unavailable",
                                "Run spotify-mcp-auth to authorize again") from None
