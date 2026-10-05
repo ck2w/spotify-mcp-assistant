@@ -7,6 +7,7 @@ from spotify_mcp_assistant.oauth import (
     InsufficientScopeError,
     get_access_token,
 )
+from spotify_mcp_assistant.setup_types import LockTimeoutError
 
 
 class SpotifyError(Exception):
@@ -96,12 +97,22 @@ def spotify_request(
         or path.startswith("//")
     ):
         raise ValueError("Expected a supported method and relative Spotify API path")
+    rejected_access_token = None
     for attempt in range(2 if method == "GET" else 1):
         try:
             token_kwargs = {"force_refresh": attempt == 1}
+            if attempt == 1:
+                token_kwargs["rejected_access_token"] = rejected_access_token
             if required_scopes:
                 token_kwargs["required_scopes"] = required_scopes
             token = get_access_token(**token_kwargs)
+        except LockTimeoutError:
+            raise SpotifyError(
+                "auth_busy",
+                "Spotify authorization is busy",
+                "Wait for authorization or refresh to finish and retry",
+                retryable=True,
+            ) from None
         except InsufficientScopeError as error:
             raise SpotifyError(
                 "insufficient_scope",
@@ -158,6 +169,7 @@ def spotify_request(
                 retryable=True,
             ) from None
         if method == "GET" and response.status_code == 401 and attempt == 0:
+            rejected_access_token = token
             continue
         if method != "GET" and response.status_code >= 500:
             raise SpotifyError(
