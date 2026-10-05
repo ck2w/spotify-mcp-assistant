@@ -15,6 +15,7 @@ def test_page_preserves_non_track_positions(fake_http, fake_track):
     assert result["items"][1]["item_type"] == "episode"
     assert result["items"][2]["track"]["name"] == "Test Song"
     assert result["next_offset"] is None
+    assert fake_http.calls[0]["params"]["additional_types"] == "track,episode"
 
 
 @pytest.mark.parametrize("field", ["track", "item"])
@@ -213,3 +214,147 @@ def test_reorder_counts_all_item_types(fake_http):
         "p" * 22, range_start=2, insert_before=0, dry_run=False
     )
     assert fake_http.write_calls[0]["json"]["range_start"] == 2
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        httpx.Response(200, text="upstream secret malformed"),
+        httpx.Response(200, json={"name": "missing id"}),
+        httpx.Response(200, json=[]),
+    ],
+)
+def test_malformed_second_precheck_keeps_submitted_progress(
+    fake_http, fake_uris, response
+):
+    from spotify_mcp_assistant import playlists, spotify_client
+
+    fake_http.enqueue_playlist_precheck()
+    fake_http.enqueue(httpx.Response(201, json={"snapshot_id": "first"}))
+    fake_http.enqueue(response)
+    with pytest.raises(spotify_client.SpotifyError) as caught:
+        playlists.add_playlist_tracks("p" * 22, fake_uris(101), dry_run=False)
+    assert caught.value.error["code"] == "invalid_response"
+    assert "secret" not in str(caught.value)
+    data = caught.value.data
+    assert data["status"] == "partial"
+    assert data["submitted_ranges"] == [[0, 100]]
+    assert data["submitted_count"] == 100
+    assert data["not_attempted_ranges"] == [[100, 101]]
+    assert fake_http.write_count == 1
+
+
+@pytest.mark.parametrize(
+    "public,collaborative,scope",
+    [
+        (False, False, "playlist-modify-private"),
+        (True, False, "playlist-modify-public"),
+        (False, True, "playlist-modify-private playlist-modify-public"),
+    ],
+)
+def test_create_accepts_operation_specific_scopes(
+    fake_http, tmp_path, monkeypatch, public, collaborative, scope
+):
+    import json
+    import time
+
+    from spotify_mcp_assistant import oauth, playlists, spotify_client
+
+    monkeypatch.setenv("SPOTIFY_CONFIG_DIR", str(tmp_path))
+    (tmp_path / ".spotify_token.json").write_text(
+        json.dumps(
+            {
+                "access_token": "fake",
+                "expires_at": time.time() + 3600,
+                "scope": scope,
+            }
+        )
+    )
+    monkeypatch.setattr(spotify_client, "get_access_token", oauth.get_access_token)
+    fake_http.enqueue(httpx.Response(201, json={"id": "q" * 22}))
+    result = playlists.create_playlist(
+        "Test", public=public, collaborative=collaborative, dry_run=False
+    )
+    assert result["status"] == "submitted"
+    assert fake_http.write_count == 1
+
+
+@pytest.mark.parametrize(
+    "operation",
+    [
+        "update_playlist_details",
+        "add_playlist_tracks",
+        "remove_playlist_tracks",
+        "replace_playlist_tracks",
+        "reorder_playlist_tracks",
+    ],
+)
+@pytest.mark.parametrize("public", [False, True])
+def test_existing_playlist_write_uses_visibility_scope(
+    fake_http, monkeypatch, operation, public
+):
+    from spotify_mcp_assistant import oauth, playlists, spotify_client
+
+    expected = "playlist-modify-public" if public else "playlist-modify-private"
+
+    def token(**kwargs):
+        for scope in kwargs.get("required_scopes", ()):
+            if scope.startswith("playlist-modify") and scope != expected:
+                raise oauth.InsufficientScopeError([scope])
+        return "fake"
+
+    monkeypatch.setattr(spotify_client, "get_access_token", token)
+    fake_http.enqueue_playlist_precheck(total=3, public=public)
+    fake_http.enqueue(httpx.Response(200, json={"snapshot_id": "after"}))
+    args = {"playlist_id": "p" * 22, "dry_run": False}
+    if operation == "update_playlist_details":
+        args["name"] = "Renamed"
+    elif operation == "reorder_playlist_tracks":
+        args.update(range_start=0, insert_before=2)
+    else:
+        args["track_uris"] = ["spotify:track:" + "a" * 22]
+    assert getattr(playlists, operation)(**args)["status"] == "submitted"
+
+
+@pytest.mark.parametrize(
+    "operation", ["list_playlists", "get_playlist", "get_playlist_tracks"]
+)
+def test_read_does_not_require_unrelated_collaborative_scope(
+    fake_http, monkeypatch, operation
+):
+    from spotify_mcp_assistant import oauth, playlists, spotify_client
+
+    def token(**kwargs):
+        if "playlist-read-collaborative" in kwargs.get("required_scopes", ()):
+            raise oauth.InsufficientScopeError(["playlist-read-collaborative"])
+        return "fake"
+
+    monkeypatch.setattr(spotify_client, "get_access_token", token)
+    if operation == "list_playlists":
+        fake_http.enqueue(
+            httpx.Response(200, json={"items": [], "total": 0, "next": None})
+        )
+        playlists.list_playlists()
+    elif operation == "get_playlist":
+        fake_http.enqueue_playlist_precheck()
+        playlists.get_playlist("p" * 22)
+    else:
+        fake_http.enqueue_playlist_items([])
+        playlists.get_playlist_tracks("p" * 22)
+    assert len(fake_http.calls) == 1
+
+
+def test_collaborative_creation_still_requires_both_scopes(fake_http, monkeypatch):
+    from spotify_mcp_assistant import oauth, playlists, spotify_client
+
+    def token(**kwargs):
+        oauth.check_scopes(
+            {"scope": "playlist-modify-private"}, kwargs.get("required_scopes", ())
+        )
+        return "fake"
+
+    monkeypatch.setattr(spotify_client, "get_access_token", token)
+    with pytest.raises(spotify_client.SpotifyError) as caught:
+        playlists.create_playlist("Test", collaborative=True, dry_run=False)
+    assert caught.value.error["code"] == "insufficient_scope"
+    assert fake_http.write_count == 0

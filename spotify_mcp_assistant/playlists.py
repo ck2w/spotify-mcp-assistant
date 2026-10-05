@@ -6,8 +6,14 @@ from spotify_mcp_assistant import spotify_client as api
 from spotify_mcp_assistant.catalog import page, track_detail
 from spotify_mcp_assistant.models import Offset, PageLimit, PlaylistID
 
-READ_SCOPES = ("playlist-read-private", "playlist-read-collaborative")
-WRITE_SCOPES = ("playlist-modify-private", "playlist-modify-public")
+
+def _write_scopes(public, collaborative=False):
+    if collaborative:
+        return ("playlist-modify-private", "playlist-modify-public")
+    if public is None:
+        # Spotify decides when visibility is unavailable; do not invent permissions.
+        return ()
+    return ("playlist-modify-public" if public else "playlist-modify-private",)
 
 
 def playlist_summary(data: dict) -> dict:
@@ -33,17 +39,23 @@ def list_playlists(limit: int = 20, offset: int = 0) -> dict:
         "GET",
         "/me/playlists",
         params={"limit": limit, "offset": offset},
-        required_scopes=READ_SCOPES,
     ).json()
     return page(data, [playlist_summary(item) for item in data["items"]], limit, offset)
 
 
 def get_playlist(playlist_id: str) -> dict:
     TypeAdapter(PlaylistID).validate_python(playlist_id)
-    data = api.spotify_request(
-        "GET", "/playlists/" + playlist_id, required_scopes=READ_SCOPES
-    ).json()
-    return playlist_summary(data)
+    response = api.spotify_request("GET", "/playlists/" + playlist_id)
+    try:
+        data = response.json()
+        TypeAdapter(PlaylistID).validate_python(data["id"])
+        return playlist_summary(data)
+    except (ValueError, KeyError, TypeError, AttributeError):
+        raise api.SpotifyError(
+            "invalid_response",
+            "Spotify returned invalid playlist metadata",
+            "Read playlist state again before attempting further writes",
+        ) from None
 
 
 def get_playlist_tracks(playlist_id: str, limit: int = 20, offset: int = 0) -> dict:
@@ -53,8 +65,8 @@ def get_playlist_tracks(playlist_id: str, limit: int = 20, offset: int = 0) -> d
     data = api.spotify_request(
         "GET",
         f"/playlists/{playlist_id}/items",
-        params={"limit": limit, "offset": offset},
-        required_scopes=READ_SCOPES,
+        params={"limit": limit, "offset": offset, "additional_types": "track,episode"},
+        required_scopes=("playlist-read-private",),
     ).json()
     if "items" not in data:
         raise api.SpotifyError(
@@ -153,7 +165,10 @@ def create_playlist(
     response = submit_once(
         data,
         lambda: api.spotify_request(
-            "POST", "/me/playlists", json=params, required_scopes=WRITE_SCOPES
+            "POST",
+            "/me/playlists",
+            json=params,
+            required_scopes=_write_scopes(public, collaborative),
         ),
     )
     try:
@@ -216,7 +231,15 @@ def update_playlist_details(
                 "PUT",
                 "/playlists/" + playlist_id,
                 json=params,
-                required_scopes=WRITE_SCOPES,
+                required_scopes=tuple(
+                    dict.fromkeys(
+                        _write_scopes(current["public"])
+                        + _write_scopes(
+                            public if public is not None else current["public"],
+                            collaborative is True,
+                        )
+                    )
+                ),
             ),
         )
     return data
@@ -261,7 +284,7 @@ def _change_tracks(
                 "POST",
                 f"/playlists/{playlist_id}/items",
                 json=body,
-                required_scopes=WRITE_SCOPES,
+                required_scopes=_write_scopes(current["public"]),
             )
         else:
             body = {"items": [{"uri": uri} for uri in batch]}
@@ -271,7 +294,7 @@ def _change_tracks(
                 "DELETE",
                 f"/playlists/{playlist_id}/items",
                 json=body,
-                required_scopes=WRITE_SCOPES,
+                required_scopes=_write_scopes(current["public"]),
             )
         return _snapshot(response)
 
@@ -329,7 +352,7 @@ def replace_playlist_tracks(
                     "PUT",
                     f"/playlists/{playlist_id}/items",
                     json={"uris": track_uris},
-                    required_scopes=WRITE_SCOPES,
+                    required_scopes=_write_scopes(current["public"]),
                 )
             )
 
@@ -373,7 +396,7 @@ def reorder_playlist_tracks(
                     "PUT",
                     f"/playlists/{playlist_id}/items",
                     json=body,
-                    required_scopes=WRITE_SCOPES,
+                    required_scopes=_write_scopes(current["public"]),
                 )
             ),
         ).get("snapshot_id")
