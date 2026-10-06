@@ -9,6 +9,8 @@ A Python MCP server that lets your AI client search Spotify, build playlists, co
 
 The AI client handles the conversation and chooses tools. This project connects those tools to Spotify using **FastMCP over stdio**.
 
+<a id="features"></a>
+
 ## ✨ What can you do?
 
 | | Try asking… |
@@ -23,14 +25,21 @@ The AI client handles the conversation and chooses tools. This project connects 
 
 For playlist edits, favorites, queue additions, and starting or transferring playback, ask your client to **preview → wait for confirmation → execute → check the result**. Clear requests for direct player controls run immediately on a selected device.
 
+<a id="contents"></a>
+
 ## 🧭 Jump to
 
-- [🚀 Quick start](#-quick-start-macos)
-- [💬 Your first conversation](#-your-first-conversation)
-- [🧰 All 32 tools](#-all-32-tools)
-- [🔐 Credentials & account sharing](#-credentials--account-sharing)
-- [🛠️ Troubleshooting](#-troubleshooting)
-- [👩‍💻 Manual setup & development](#-manual-setup--development)
+- [✨ What you can do](#features)
+- [🚀 Quick start](#quick-start)
+- [💬 Your first conversation](#first-conversation)
+- [🎭 Everyday scenarios in Claude](#claude-scenarios)
+- [🧰 All 32 tools](#tools)
+- [🔐 Credentials & account sharing](#credentials)
+- [🛠️ Troubleshooting](#troubleshooting)
+- [👩‍💻 Manual setup](#manual-setup)
+- [🧪 Development & verification](#development)
+
+<a id="quick-start"></a>
 
 ## 🚀 Quick start (macOS)
 
@@ -109,6 +118,8 @@ That public download flow has not yet been verified. Use the local-wheel steps a
 
 </details>
 
+<a id="first-conversation"></a>
+
 ## 💬 Your first conversation
 
 ### 🔎 Search, choose, and preview
@@ -136,6 +147,151 @@ Creating a playlist and adding its songs are separate steps. Once creation retur
 🤝 **Your client manages confirmation.** The server cannot verify the conversation or enforce a new approval message. Ask your client to wait before executing a previewed write, and preview again if the parameters change.
 
 📚 [More recipes: playlists, playback, favorites, and uncertain results](docs/workflows.md)
+
+<a id="claude-scenarios"></a>
+
+## 🎭 Everyday scenarios in Claude
+
+Once **spotify** is connected in Claude Desktop or Claude Code, you can describe what you want in plain language. Claude selects the tools and carries the results into the conversation.
+
+The conversations below are **simulated examples of practical use**, not transcripts of live Spotify acceptance. Names, devices, and results are illustrative; Claude should use the actual IDs returned by your account. Tool sequences show a typical path, not a guaranteed model response.
+
+Choose a scenario:
+
+- [🚇 Build a commute playlist](#scenario-commute)
+- [💻 Start a focus session](#scenario-focus)
+- [❤️ Save the song playing now](#scenario-save-song)
+- [🎉 Add a friend's song to the queue](#scenario-party)
+- [🧹 Tidy an existing playlist](#scenario-tidy)
+- [📌 Keep a playlist in your library](#scenario-library)
+
+<a id="scenario-commute"></a>
+
+### 🚇 1. Build a commute playlist together
+
+**When it helps:** You have a few favorite artists and want Claude to handle searching, version selection, and playlist setup.
+
+> **You:** Use spotify to help me build a private playlist called Morning Commute. Search for Yellow by Coldplay, Dreams by Fleetwood Mac, and Here Comes the Sun by The Beatles. Show the versions first, and wait for me to choose.
+>
+> **Claude:** Here are the matching versions from Spotify. Which would you like to use?
+>
+> **You:** Use the studio versions I selected. Preview creating the private playlist, then wait.
+>
+> **Claude:** Preview: create an empty private playlist named Morning Commute. No changes have been made.
+>
+> **You:** Confirm creation.
+>
+> **Claude:** Spotify accepted creation and returned the playlist ID. Here is a separate preview of adding your three selected tracks in order. Please confirm that step.
+>
+> **You:** Confirm adding those tracks.
+>
+> **Claude:** I will execute that preview, then read the playlist and its tracks to check the result.
+
+🧰 **Typical tools:** `search_tracks` → `create_playlist` → `add_playlist_tracks` → `get_playlist` / `get_playlist_tracks`.
+
+💡 Claude can suggest songs from your description and search for them. This MCP does not provide audio analysis or Spotify's personalized recommendation engine.
+
+<a id="scenario-focus"></a>
+
+### 💻 2. Start a focus session without opening Spotify's menus
+
+**When it helps:** You already have a study or coding playlist and want to choose a device, start it, and adjust playback from the chat.
+
+> **You:** Use spotify to find my Deep Focus playlist and list available devices. Let me choose both, then preview playback. Do not start yet.
+>
+> **Claude:** I found these playlists and devices. Which playlist and device should I use?
+>
+> **You:** Use the playlist I selected and my MacBook. Show the playback preview.
+>
+> **Claude:** Preview: play that playlist on the selected MacBook device. Shall I execute it?
+>
+> **You:** Confirm. Start it and check playback state.
+>
+> **Claude:** I will send the request and check whether the selected playlist is playing on that device.
+>
+> **You:** On that same device, set volume to 25% and turn shuffle off.
+
+🧰 **Typical tools:** `list_playlists` → `list_devices` → `play_playlist` → `get_playback_state` → `set_volume` / `set_shuffle`.
+
+⏯️ Volume and shuffle are direct controls; a clear request runs immediately on the selected device. You can also say “pause” or “resume on that device.” This flow does not schedule a focus timer or automatically stop playback later.
+
+<a id="scenario-save-song"></a>
+
+### ❤️ 3. Save the song you are hearing right now
+
+**When it helps:** A song catches your attention, and you want to identify it and add it to your saved songs.
+
+> **You:** Use spotify to tell me what's playing now and whether I've already saved it. If it isn't saved, preview saving it and wait for confirmation.
+>
+> **Claude:** The playback result identifies this track, and the library check says it isn't saved. Here is the save preview.
+>
+> **You:** Confirm saving that exact track, then check its saved state.
+>
+> **Claude:** I will save the previewed track URI and check it again.
+
+🧰 **Typical tools:** `get_playback_state` → `check_saved_tracks` → `save_tracks` → `check_saved_tracks`.
+
+💡 If nothing is playing, or the current item is not a supported track, Claude should explain that rather than guess. If the song changes before confirmation, save only the track you previewed or ask for a new preview.
+
+<a id="scenario-party"></a>
+
+### 🎉 4. Add a friend's request without interrupting the current song
+
+**When it helps:** Someone requests a song during a gathering, and you want to queue the right version on the right device.
+
+> **You:** Use spotify to search for Dancing Queen by ABBA. Show the versions, current queue, and devices. I want to queue it without replacing the current playback.
+>
+> **Claude:** Here are the matching tracks, queue, and devices. Which track and device should I use?
+>
+> **You:** Use the version and living-room device I selected. Preview adding it to the queue.
+>
+> **Claude:** Preview: add the selected track to the queue on that device. Waiting for confirmation.
+>
+> **You:** Confirm, then show the queue again.
+
+🧰 **Typical tools:** `search_tracks` → `get_queue` / `list_devices` → `add_to_queue` → `get_queue`.
+
+💡 The queue changes as music plays. If the write result is uncertain, inspect the queue before retrying; replaying the request could add the song twice.
+
+<a id="scenario-tidy"></a>
+
+### 🧹 5. Review and tidy an existing playlist
+
+**When it helps:** A playlist has grown messy, and you want to understand its contents before changing the order.
+
+> **You:** Use spotify to find my Road Trip playlist. Let me select it, then read all its track pages. Show the order and repeated track URIs. Don't change anything yet.
+>
+> **Claude:** Here is the full order. These exact track URIs appear more than once; different versions may have different URIs.
+>
+> **You:** Move the final track to the beginning. Preview the reorder and wait.
+>
+> **Claude:** Here is the reorder preview with the current playlist snapshot.
+>
+> **You:** Confirm that reorder. Then read the playlist again and show the new order.
+
+🧰 **Typical tools:** `list_playlists` → `get_playlist` / `get_playlist_tracks` → `reorder_playlist_tracks` → `get_playlist_tracks`.
+
+💡 Claude compares the returned data in the conversation; there is no separate cleanup tool. A changed snapshot requires a fresh read and preview. Removing a track by URI can remove all its occurrences, so “delete just one duplicate” must not be treated as a simple URI removal.
+
+<a id="scenario-library"></a>
+
+### 📌 6. Keep a shared playlist in your library
+
+**When it helps:** You have a playlist ID or Spotify playlist URI and want to save it for easy access later.
+
+> **You:** Use spotify to inspect this playlist: `spotify:playlist:<PLAYLIST_ID>`. Show its name and whether I can access its contents. Preview saving it to my library, but don't change it yet.
+>
+> **Claude:** Here is the playlist information and the save preview. Saving adds the existing playlist to your library; it does not copy its tracks.
+>
+> **You:** Confirm saving that playlist, then check my playlist list for it.
+
+🧰 **Typical tools:** `get_playlist` → `save_playlist` → `list_playlists` (follow pagination as needed).
+
+💡 Replace `<PLAYLIST_ID>` with a real ID. `unsave_playlist` removes the library entry; it does not delete the playlist or clear its songs. Spotify app access restrictions can limit which playlist contents are readable.
+
+📚 [Detailed workflow rules and how to handle partial or unknown results](docs/workflows.md)
+
+<a id="tools"></a>
 
 ## 🧰 All 32 tools
 
@@ -200,6 +356,8 @@ Current endpoints use `/me/playlists`, `/playlists/{id}/items`, and URI-based `/
 
 </details>
 
+<a id="credentials"></a>
+
 ## 🔐 Credentials & account sharing
 
 📁 By default, private files live outside the repository:
@@ -231,6 +389,8 @@ uvx --from spotify-mcp-assistant==0.3.0 spotify-mcp-setup --replace-credentials
 
 👥 **An account change affects every client sharing that directory.** Keep real `.env` files, tokens, and configuration backups private.
 
+<a id="troubleshooting"></a>
+
 ## 🛠️ Troubleshooting
 
 | What you see | What to try |
@@ -250,6 +410,8 @@ uvx --from spotify-mcp-assistant==0.3.0 spotify-mcp-setup --replace-credentials
 Reads retry a Spotify API 401 at most once after refreshing or reusing a newer token. Business writes are not automatically retried. OAuth refresh errors before submission are reported separately.
 
 📚 [Full installation & recovery guide](docs/installation.md)
+
+<a id="manual-setup"></a>
 
 ## 👩‍💻 Manual setup & development
 
@@ -450,6 +612,8 @@ Save the file, press **Command+Q to quit Claude Desktop completely**, then reope
 Claude Desktop starts the server automatically. You do not need to activate Poetry or run the server manually. See the [official MCP desktop setup guide](https://modelcontextprotocol.io/docs/develop/connect-local-servers).
 
 </details>
+
+<a id="development"></a>
 
 ## 🧪 Development and verification
 
